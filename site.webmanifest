@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "AtlasNote",
+  "short_name": "AtlasNote",
+  "description": "Write it freely, keep it closely.",
+  "start_url": "/notes.html",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#171721",
+  "theme_color": "#171721",
+  "icons": [
+    {"src":"/asset/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"/asset/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},
+    {"src":"/asset/icon-maskable.png","sizes":"512x512","type":"image/png","purpose":"maskable"}
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "atlasnote",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A device-first, offline notebook. Local prototype; no account or cloud backend.",
+  "scripts": { "start": "node tools/serve.mjs", "test": "node tools/test.mjs" },
+  "engines": { "node": ">=22" },
+  "license": "UNLICENSED"
+}

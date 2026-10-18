@@ -1,0 +1,12 @@
+AtlasNote — NXLabTW
+Contact: atlasnote@nxlabtw.com
+
+Original application code and branding: Copyright 2026 NXLabTW, all rights reserved.
+
+Locally bundled third-party components:
+- markdown-it 14.3.3 — MIT; script/vendor/markdown-it.LICENSE
+- hash-wasm 4.12.0 (Argon2id) — MIT; script/vendor/hash-wasm.LICENSE
+- Font Awesome Free 7 — accompanying license at asset/fontawesome/LICENSE.txt
+  Icons: CC BY 4.0; fonts: SIL OFL 1.1; code: MIT, as specified in that license.
+
+User-created note content remains the user's own.

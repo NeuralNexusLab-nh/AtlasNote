@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">
+  <title>AtlasNote</title>
+  <defs><path id="blade" d="M41 3 47 10 45 20Q43 27 34 30L39 19Z"/></defs>
+  <g>
+    <use href="#blade" fill="#7181e5"/>
+    <use href="#blade" transform="rotate(60 40 40)" fill="#a199ec"/>
+    <use href="#blade" transform="rotate(120 40 40)" fill="#7181e5"/>
+    <use href="#blade" transform="rotate(180 40 40)" fill="#7181e5"/>
+    <use href="#blade" transform="rotate(240 40 40)" fill="#7181e5"/>
+    <use href="#blade" transform="rotate(300 40 40)" fill="#7181e5"/>
+  </g>
+</svg>
