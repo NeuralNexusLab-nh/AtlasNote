@@ -1,5 +1,10 @@
 /* Device encryption and AtlasEncrypt. Keep v1 AAD labels for existing-note compatibility. */
 const enc = new TextEncoder(), dec = new TextDecoder('utf-8', { fatal: true });
+let accountRoot=null,accountSelected=false;
+// Account keys stay in memory. The original device key is never overwritten.
+export function useAccountKey(bytes){accountSelected=true;accountRoot?.fill(0);accountRoot=bytes?new Uint8Array(bytes):null;}
+export function hasRoot(){return accountSelected?!!accountRoot:!!localStorage.getItem('atlasnote.device-root.v1');}
+export async function legacyKey(id,purpose='content'){const raw=unb64(localStorage.getItem('atlasnote.device-root.v1')||'');try{if(raw.length!==32)throw new Error('missingKey');return await derive(raw,id,purpose);}finally{raw.fill(0);}}
 export const b64 = bytes => { let s=''; for(let i=0;i<bytes.length;i+=8192)s+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(s); };
 export const unb64 = s => {
   if(typeof s!=='string'||s.length>340_000_000||!s.length||s.length%4||/[^A-Za-z0-9+/=]/.test(s))throw new Error('invalidBackup');
@@ -14,6 +19,8 @@ async function derive(raw,id,purpose) {
   return new Uint8Array(await crypto.subtle.deriveBits({name:'HKDF',hash:'SHA-256',salt:enc.encode('AtlasEncrypt/device/v1'),info:aad(id,purpose)},root,256));
 }
 export function deviceRoot(create=false) {
+  if(accountRoot)return new Uint8Array(accountRoot);
+  if(accountSelected)throw new Error('missingKey');
   let value=localStorage.getItem('atlasnote.device-root.v1');
   if(!value&&create){ value=b64(random(32));localStorage.setItem('atlasnote.device-root.v1',value); }
   if(!value)throw new Error('missingKey');

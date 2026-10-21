@@ -1,23 +1,30 @@
 import * as C from './crypto.js';
-const DB='atlasnote-v1';let dbPromise;
+let DB='atlasnote-v1',dbPromise,backend=null;
+export function configureAccount(id,adapter){if(!/^[a-zA-Z0-9-]{1,100}$/.test(id))throw new Error('cloudAuth');DB='atlasnote-cloud-'+id;dbPromise=null;backend=adapter;}
+export function detachAccount(){backend={authorize:async()=>{throw new Error('cloudAuth');}};dbPromise=null;DB='atlasnote-locked';C.useAccountKey(null);}
+async function authorize(){if(backend)await backend.authorize();}
 function storageFailure(error){return new Error(error?.name==='QuotaExceededError'?'storageFull':['SecurityError','NotAllowedError'].includes(error?.name)?'storageDisabled':'storageError',{cause:error});}
 export const LIMITS={text:1_000_000,images:3,image:16_000_000,sourceImage:100_000_000,dimension:8192,pixels:67_108_864};
 export const uuid=()=>crypto.randomUUID();
 export const bytes=value=>new TextEncoder().encode(JSON.stringify(value)).length;
 export function database(){
-  if(!dbPromise)dbPromise=new Promise((resolve,reject)=>{const req=indexedDB.open(DB,1);req.onupgradeneeded=()=>req.result.createObjectStore('notes',{keyPath:'id'});req.onsuccess=()=>{req.result.onversionchange=()=>{req.result.close();dbPromise=null;};resolve(req.result);};req.onerror=()=>{dbPromise=null;reject(storageFailure(req.error));};req.onblocked=()=>reject(new Error('storageBlocked'));});
+  if(!dbPromise)dbPromise=new Promise((resolve,reject)=>{const req=indexedDB.open(DB,3);req.onupgradeneeded=()=>{for(const name of ['notes','outbox','heads','conflicts','changes'])if(!req.result.objectStoreNames.contains(name))req.result.createObjectStore(name,{keyPath:'id'});};req.onsuccess=()=>{req.result.onversionchange=()=>{req.result.close();dbPromise=null;};resolve(req.result);};req.onerror=()=>{dbPromise=null;reject(storageFailure(req.error));};req.onblocked=()=>reject(new Error('storageBlocked'));});
   return dbPromise;
 }
-export async function all(){const db=await database();return new Promise((resolve,reject)=>{const tx=db.transaction('notes');const req=tx.objectStore('notes').getAll();req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(storageFailure(req.error));});}
-export async function get(id){const db=await database();return new Promise((resolve,reject)=>{const req=db.transaction('notes').objectStore('notes').get(id);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(storageFailure(req.error));});}
+export async function all(){await authorize();return rawAll('notes');}
+export async function get(id){await authorize();return rawGet('notes',id);}
+export async function rawAll(name){const db=await database();return new Promise((resolve,reject)=>{const req=db.transaction(name).objectStore(name).getAll();req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(storageFailure(req.error));});}
+export async function rawGet(name,id){const db=await database();return new Promise((resolve,reject)=>{const req=db.transaction(name).objectStore(name).get(id);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(storageFailure(req.error));});}
+export async function atomic(stores,fn){const db=await database();return new Promise((resolve,reject)=>{const tx=db.transaction(stores,'readwrite');fn(tx);tx.oncomplete=resolve;tx.onabort=()=>reject(storageFailure(tx.error));tx.onerror=()=>{};});}
 export async function put(record,expected=0){
+  await authorize();const change=backend?await backend.prepare(record):null;
   const db=await database();return new Promise((resolve,reject)=>{
-    const tx=db.transaction('notes','readwrite'),store=tx.objectStore('notes');let conflict=false;
-    const req=store.get(record.id);req.onsuccess=()=>{if((req.result?.rev||0)!==expected){conflict=true;tx.abort();return;}store.put({...record,rev:expected+1});};
-    tx.oncomplete=()=>resolve({...record,rev:expected+1});tx.onabort=()=>reject(conflict?new Error('conflict'):storageFailure(tx.error));tx.onerror=()=>{};
+    const tx=db.transaction(change?['notes','outbox','heads','conflicts']:['notes'],'readwrite'),store=tx.objectStore('notes');let conflict=false;
+    const req=store.get(record.id);req.onsuccess=()=>{if((req.result?.rev||0)!==expected){conflict=true;tx.abort();return;}const save=()=>{store.put({...record,rev:expected+1});if(change){tx.objectStore('outbox').put(change);tx.objectStore('heads').put({id:record.id,tips:[change.id]});}};if(change){const c=tx.objectStore('conflicts').get(record.id);c.onsuccess=()=>{if(c.result){conflict=true;tx.abort();}else{const h=tx.objectStore('heads').get(record.id);h.onsuccess=()=>{change.parents=h.result?.tips||[];save();};}};}else save();};
+    tx.oncomplete=()=>{backend?.changed();resolve({...record,rev:expected+1});};tx.onabort=()=>reject(conflict?new Error('conflict'):storageFailure(tx.error));tx.onerror=()=>{};
   });
 }
-export async function remove(id,expected){const db=await database();return new Promise((resolve,reject)=>{let conflict=false;const tx=db.transaction('notes','readwrite'),store=tx.objectStore('notes');const req=store.get(id);req.onsuccess=()=>{if(!req.result||req.result.rev!==expected){conflict=true;tx.abort();return;}store.delete(id);};tx.oncomplete=resolve;tx.onabort=()=>reject(conflict?new Error('conflict'):storageFailure(tx.error));tx.onerror=()=>{};});}
+export async function remove(id,expected){await authorize();if(backend)return backend.remove(id,expected);const db=await database();return new Promise((resolve,reject)=>{let conflict=false;const tx=db.transaction('notes','readwrite'),store=tx.objectStore('notes');const req=store.get(id);req.onsuccess=()=>{if(!req.result||req.result.rev!==expected){conflict=true;tx.abort();return;}store.delete(id);};tx.oncomplete=resolve;tx.onabort=()=>reject(conflict?new Error('conflict'):storageFailure(tx.error));tx.onerror=()=>{};});}
 export async function updateMeta(id,change){const note=await get(id);if(!note)throw new Error('notFound');return put({...note,...change},note.rev);}
 export async function cleanup(){for(const n of await all())if(n.trashedAt&&Date.parse(n.trashedAt)+n.trashDays*86400000<Date.now())await remove(n.id,n.rev).catch(()=>{});}
 export function preferences(){try{const p=JSON.parse(localStorage.getItem('atlasnote.preferences')||'{}');return {theme:p.theme==='light'?'light':'dark',language:['en','zh-Hant','ja','leet'].includes(p.language)?p.language:null,history:[0,1,3,5,10,20].includes(p.history)?p.history:3,trashDays:[1,3,7,14,30].includes(p.trashDays)?p.trashDays:7};}catch{return {theme:'dark',language:null,history:3,trashDays:7};}}
@@ -42,12 +49,12 @@ export function imageDimensions(b,type){
   if(type==='image/jpeg'){let at=2;while(at+9<b.length){if(b[at++]!==255)return null;while(at<b.length&&b[at]===255)at++;const marker=b[at++];if(marker===217||marker===218)return null;if(marker===1||(marker>=208&&marker<=215))continue;if(at+2>b.length)return null;const length=view.getUint16(at);if(length<2||at+length>b.length)return null;if([192,193,194,195,197,198,199,201,202,203,205,206,207].includes(marker))return {width:view.getUint16(at+5),height:view.getUint16(at+3)};at+=length;}}
   return null;
 }
-export async function decodeRecord(note,key=null){if(note.mode==='none')return validatePayload(note.body);if(note.mode==='basic')key=await C.deviceKey(note.id);if(!key)throw new Error('locked');try{return validatePayload(await C.open(key,note.id,'content',note.body));}finally{if(note.mode==='basic')key.fill(0);}}
+export async function decodeRecord(note,key=null){if(note.mode==='none')return validatePayload(note.body);if(note.mode==='basic')key=await C.deviceKey(note.id);if(!key)throw new Error('locked');try{const payload=await C.open(key,note.id,'content',note.body);if(note.attachments)payload.images=await Promise.all(note.attachments.map(a=>C.open(key,note.id,'image:'+a.id,a.box)));return validatePayload(payload);}finally{if(note.mode==='basic')key.fill(0);}}
 export async function encodeRecord(note,payload,key=null){
-  if(note.mode!=='none'&&!localStorage.getItem('atlasnote.device-root.v1')&&(await all()).some(n=>n.mode!=='none'))throw new Error('missingKey');
-  payload=validatePayload(payload);let body,titleBox=null;
-  if(note.mode==='none')body=payload;else{const actual=note.mode==='basic'?await C.deviceKey(note.id,'content',true):key;if(!actual)throw new Error('locked');try{body=await C.seal(actual,note.id,'content',payload);titleBox=await C.protectTitle(note.id,payload.title,true);}finally{if(note.mode==='basic')actual.fill(0);}}
-  const record={...note,body,titleBox};record.size=bytes(record);return record;
+  if(note.mode!=='none'&&!C.hasRoot()&&(await all()).some(n=>n.mode!=='none'))throw new Error('missingKey');
+  payload=validatePayload(payload);let body,titleBox=null,attachments;
+  if(note.mode==='none')body=payload;else{const actual=note.mode==='basic'?await C.deviceKey(note.id,'content',true):key;if(!actual)throw new Error('locked');try{attachments=await Promise.all(payload.images.map(async image=>{const hash=C.b64(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(image))))),old=note.attachments?.find(a=>a.id===image.id&&a.hash===hash);return old||{id:image.id,hash,box:await C.seal(actual,note.id,'image:'+image.id,image)};}));body=await C.seal(actual,note.id,'content',{...payload,images:[]});titleBox=await C.protectTitle(note.id,payload.title,true);}finally{if(note.mode==='basic')actual.fill(0);}}
+  const record={...note,body,titleBox};if(attachments)record.attachments=attachments;record.size=bytes(record);return record;
 }
 export async function saveNote(note,payload,key,previous=null){
   const limit=preferences().history;
@@ -60,11 +67,12 @@ export async function exportNote(note){
   const entry={format:'AtlasNote',version:1,exportedAt:new Date().toISOString(),id:note.id,mode:note.mode,createdAt:note.createdAt,updatedAt:note.updatedAt,pinned:!!note.pinned,archived:!!note.archived,body:note.body};
   if(note.mode==='basic'){const key=await C.deviceKey(note.id);entry.key=C.b64(key);key.fill(0);}
   if(note.mode==='secure'){entry.salt=note.salt;entry.wrap=note.wrap;}
+  if(note.attachments)entry.attachments=note.attachments;
   return entry;
 }
 export function validateEntry(entry){
   if(!entry||entry.format!=='AtlasNote'||entry.version!==1||!['none','basic','secure'].includes(entry.mode)||! /^[a-f0-9-]{36}$/.test(entry.id)||!Number.isFinite(Date.parse(entry.createdAt))||!Number.isFinite(Date.parse(entry.updatedAt)))throw new Error('invalidBackup');
-  if(entry.mode==='none')validatePayload(entry.body);else{if(!entry.body||C.unb64(entry.body.iv).length!==12||C.unb64(entry.body.data).length<16)throw new Error('invalidBackup');if(entry.mode==='basic'&&C.unb64(entry.key).length!==32)throw new Error('invalidBackup');if(entry.mode==='secure'&&(!entry.wrap||C.unb64(entry.salt).length!==16||C.unb64(entry.wrap.iv).length!==12||C.unb64(entry.wrap.data).length>256||'key' in entry))throw new Error('invalidBackup');}
+  if(entry.mode==='none')validatePayload(entry.body);else{if(!entry.body||C.unb64(entry.body.iv).length!==12||C.unb64(entry.body.data).length<16)throw new Error('invalidBackup');if(entry.mode==='basic'&&C.unb64(entry.key).length!==32)throw new Error('invalidBackup');if(entry.mode==='secure'&&(!entry.wrap||C.unb64(entry.salt).length!==16||C.unb64(entry.wrap.iv).length!==12||C.unb64(entry.wrap.data).length>256||'key' in entry))throw new Error('invalidBackup');if(entry.attachments&&(!Array.isArray(entry.attachments)||entry.attachments.length>3||entry.attachments.some(a=>!/^img_[a-f0-9]{12}$/.test(a.id)||C.unb64(a.box?.iv).length!==12||typeof a.box?.data!=='string'||a.box.data.length>24_000_000)))throw new Error('invalidBackup');}
   return entry;
 }
 export async function importEntries(entries,askPIN){
@@ -72,7 +80,7 @@ export async function importEntries(entries,askPIN){
   entries.forEach(validateEntry);const prepared=[];
   for(const e of entries){let key,payload,newKey;try{
     if(e.mode==='none')payload=validatePayload(e.body);
-    else{key=e.mode==='basic'?C.unb64(e.key):await C.unlockVault(e,await askPIN());payload=validatePayload(await C.open(key,e.id,'content',e.body));}
+    else{key=e.mode==='basic'?C.unb64(e.key):await C.unlockVault(e,await askPIN());payload=await C.open(key,e.id,'content',e.body);if(e.attachments)payload.images=await Promise.all(e.attachments.map(a=>C.open(key,e.id,'image:'+a.id,a.box)));payload=validatePayload(payload);}
     const id=uuid(),record={id,mode:e.mode,createdAt:e.createdAt,updatedAt:e.updatedAt,pinned:!!e.pinned,archived:!!e.archived,trashedAt:null,rev:1};
     if(e.mode==='secure'){// Rewrap a fresh note key under the supplied passphrase and new ID.
       const pin=await askPIN('newImportPIN');const vault=await C.createVault(id,pin);newKey=vault.key;record.salt=vault.salt;record.wrap=vault.wrap;
@@ -80,6 +88,6 @@ export async function importEntries(entries,askPIN){
     prepared.push(await encodeRecord(record,payload,newKey));
   }finally{key?.fill(0);newKey?.fill(0);}}
   // All-or-nothing import. Crypto/validation happens before opening the transaction.
-  const db=await database();await new Promise((resolve,reject)=>{const tx=db.transaction('notes','readwrite'),store=tx.objectStore('notes');for(const n of prepared)store.add(n);tx.oncomplete=resolve;tx.onabort=()=>reject(storageFailure(tx.error));tx.onerror=()=>{};});
+  for(const n of prepared)await put(n,0);
   return prepared.length;
 }

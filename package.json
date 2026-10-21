@@ -1,10 +1,10 @@
 {
   "name": "atlasnote",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "A device-first, offline notebook. Local prototype; no account or cloud backend.",
-  "scripts": { "start": "node tools/serve.mjs", "test": "node tools/test.mjs" },
+  "description": "Encrypted notes, images and AI with Puter sign-in and cloud synchronization.",
+  "scripts": { "start": "node tools/serve.mjs", "test": "node tools/cloud.test.mjs && node tools/cloud-safety.test.mjs && node tools/interactions.mjs && node tools/compression.test.mjs && node tools/import-size.test.mjs", "test:puter-login": "node tools/puter-live-smoke.mjs" },
   "engines": { "node": ">=22" },
   "license": "UNLICENSED"
 }

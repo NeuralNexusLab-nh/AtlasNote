@@ -2,10 +2,11 @@
 // this is deliberately NOT a claim to have parsed an actual multi-GB file.
 import {createRequire} from 'node:module';
 import assert from 'node:assert/strict';
+import {fixture} from './puter-fixture.mjs';
 const require=createRequire(import.meta.url),{chromium}=require('C:/Users/eaton/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 const browser=await chromium.launch({channel:'msedge',headless:true});
 try{
- const context=await browser.newContext({locale:'en-US'}),page=await context.newPage();
+ const context=await browser.newContext({locale:'en-US'});await fixture().attach(context);const page=await context.newPage();
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('http://127.0.0.1:4321/settings.html');await page.waitForSelector('[data-import]');
  await page.evaluate(async()=>{

@@ -1,7 +1,9 @@
 import {createRequire} from 'node:module';import assert from 'node:assert/strict';import fs from 'node:fs/promises';import os from 'node:os';import path from 'node:path';
+import {fixture} from './puter-fixture.mjs';
 const require=createRequire(import.meta.url),{chromium}=require('C:/Users/eaton/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 const browser=await chromium.launch({channel:'msedge',headless:true}),context=await browser.newContext({viewport:{width:390,height:844},acceptDownloads:true}),page=await context.newPage();
 const base='http://127.0.0.1:4321',artifacts=await fs.mkdtemp(path.join(os.tmpdir(),'atlasnote-interactions-'));let count=0;const errors=[],csp=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',e=>{if(e.text().includes('Content Security Policy')||e.text().includes('violates the following'))csp.push(e.text());});
+await fixture().attach(context);
 const ok=(v,m)=>{assert.ok(v,m);count++;};
 try{
  await page.goto(base);await page.waitForSelector('.hero');await page.selectOption('#language','en');
@@ -20,12 +22,12 @@ try{
  await page.locator('[data-action=pin]').click();await page.waitForSelector('.note-card.pinned');await page.locator('[data-filter]').click();await page.locator('[data-filter-value=archived]').click();ok(await page.locator('.note-card').count()===0,'Archive filter');
  await page.locator('[data-filter-value=all]').click();await page.locator('[data-action=archive]').click();await page.waitForSelector('.note-card',{state:'detached'});ok(true,'Archive removes from regular list');
  await page.locator('[data-filter-value=archived]').click();await page.waitForSelector('.note-card');await page.locator('[data-action=archive]').click();await page.waitForSelector('.note-card',{state:'detached'});ok(true,'Unarchive');
- await page.locator('[data-filter-value=all]').click();await page.locator('[data-action=trash]').click();await page.goto(base+'/trash.html');await page.waitForSelector('.note-card');await page.locator('[data-action=delete]').click();await page.waitForSelector('dialog');await page.mouse.click(3,3);ok(await page.locator('dialog').isVisible(),'Backdrop does not dismiss');await page.locator('dialog [data-confirm]').click();await page.waitForSelector('.note-card',{state:'detached'});ok(true,'Permanent delete');
+ await page.locator('[data-filter-value=all]').click();await page.locator('[data-action=trash]').click();await page.waitForSelector('.note-card',{state:'detached'});await page.goto(base+'/trash.html');await page.waitForSelector('.note-card');await page.locator('[data-action=delete]').click();await page.waitForSelector('dialog');await page.mouse.click(3,3);ok(await page.locator('dialog').isVisible(),'Backdrop does not dismiss');await page.locator('dialog [data-confirm]').click();await page.waitForSelector('.note-card',{state:'detached'});ok(true,'Permanent delete');
  // Malicious import, image limits, missing key safety, and atomic IndexedDB failures.
  const safety=await page.evaluate(async()=>{
   const S=await import('/script/store.js'),C=await import('/script/crypto.js');
   let badImage=false;try{S.validatePayload({title:'x',text:'',images:[{id:'img_0123456789ab',type:'image/svg+xml',data:btoa('<svg onload="alert(1)"/>'),caption:'',width:1,height:1}],history:[]});}catch{badImage=true;}
-  const id=S.uuid(),note=await S.saveNote({id,mode:'basic',rev:0},{title:'Key safety',text:'Test',images:[],history:[]},null),root=localStorage.getItem('atlasnote.device-root.v1');localStorage.removeItem('atlasnote.device-root.v1');let guarded=false;try{await S.saveNote({id:S.uuid(),mode:'basic',rev:0},{title:'Must not reset root',text:'',images:[],history:[]},null);}catch(e){guarded=e.message==='missingKey';}const notReplaced=localStorage.getItem('atlasnote.device-root.v1')===null;localStorage.setItem('atlasnote.device-root.v1',root);
+  const id=S.uuid(),note=await S.saveNote({id,mode:'basic',rev:0},{title:'Key safety',text:'Test',images:[],history:[]},null),root=C.deviceRoot();C.useAccountKey(null);let guarded=false;try{await S.saveNote({id:S.uuid(),mode:'basic',rev:0},{title:'Must not reset root',text:'',images:[],history:[]},null);}catch(e){guarded=e.message==='missingKey';}const notReplaced=localStorage.getItem('atlasnote.device-root.v1')===null;C.useAccountKey(root);root.fill(0);
   const decoded=await S.decodeRecord(note);await S.remove(id,note.rev);
   return {badImage,guarded,notReplaced,preserved:decoded.text==='Test'};
  });for(const [k,v]of Object.entries(safety))ok(v,k);

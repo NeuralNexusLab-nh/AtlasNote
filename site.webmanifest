@@ -3,7 +3,7 @@
   "name": "AtlasNote",
   "short_name": "AtlasNote",
   "description": "Write it freely, keep it closely.",
-  "start_url": "/notes.html",
+  "start_url": "/dashboard.html",
   "scope": "/",
   "display": "standalone",
   "background_color": "#171721",

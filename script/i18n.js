@@ -1,3 +1,4 @@
+import {cloudWords} from './cloud-words.js';
 const words={
  compactHint:['Strong compression · smallest files','高度壓縮，優先縮小檔案','強い圧縮・サイズ優先'],balancedHint:['Moderate compression · clear and compact','適度壓縮，清楚又省空間','適度な圧縮・読みやすさと容量の両立'],clearHint:['Light compression · retain detail','輕度壓縮，盡量保留原圖細節','軽い圧縮・細部を保つ'],
  demoMemo:['Quick notes','隨手記','ちょっとメモ'],demoMemoTitle:['A little reminder for Saturday.','週六的小備忘。','土曜日の覚え書き。'],demoMemoWhen:['Dinner · Saturday, 18:30','晚餐訂位 · 週六 18:30','夕食の予約 · 土曜日 18:30'],demoMemoBring:['Bring the camera and a power bank.','記得帶相機、行動電源。','カメラと充電器を忘れずに。'],demoMemoBody:['Write it now. Find it when you need it.','先記下來，需要時一眼找到。','今書いて、必要なときにすぐ。'],
@@ -67,6 +68,7 @@ const words={
  limitError:['This content exceeds the safety limit. Use up to 80 title characters, 1 million text characters and 3 images.','內容超過安全限制。標題最多 80 字元、文字最多 100 萬字元、圖片最多 3 張。','安全上の上限を超えています。タイトルは 80 文字、本文は 100 万文字、画像は 3 枚までです。'],
  resetView:['Fit image','完整顯示','全体表示'],noVersions:['No saved text versions','尚無文字版本','保存された履歴はありません'],
 };
+Object.assign(words,cloudWords);
 let language='en';
 export function setLanguage(l){language=['en','zh-Hant','ja','leet'].includes(l)?l:'en';document.documentElement.lang=language==='leet'?'en':language;}
 export const getLanguage=()=>language;

@@ -1,41 +1,66 @@
-# AtlasNote · Local prototype
+# AtlasNote · Puter cloud preview
 
 Write it freely, keep it closely.
 
-A buildless, device-first notebook adapted from the AstraNote interface. No account, backend, AI, payment, analytics, remote fonts, cloud sync, or network storage. This is an independent local project; it does not modify AstraNote data.
+A buildless notebook with Markdown, images, encryption and Atlas Agent. Puter provides identity, account-owned cloud storage and AI. No AtlasNote backend, developer AI key or shared billing credentials are required.
 
-## Preview
+## Local preview
 
-Run `npm start` with Node 22 or newer, then open **http://127.0.0.1:4321**. No npm install or environment keys are required. The Node process only serves static files and security headers; all application data stays in the browser. Do not open the HTML through file://.
+Run `npm start` with Node 22 or newer, then open http://127.0.0.1:4321. The Node process only serves static files and security headers. Use HTTPS on the production domain, atlasnote.nxlabtw.com. Do not open files through file://.
 
-Keep using the same origin (scheme + hostname + port). `localhost`, `127.0.0.1`, and a future atlasnote.nxlabtw.com each have different storage. Export JSON before changing origins. HTTPS is required for a non-local deployment.
+This is a local integration preview, not an assertion that a real Puter account has passed every cloud operation. The official remote SDK and authorization-window launch have been exercised without credentials; account storage, synchronization and AI tests use a contract double in isolated browser contexts. No original personal notes or accounts are used.
 
-## Included
+## Features
 
-- English, Traditional Chinese, Japanese, and playful l33t; dark/light themes.
-- IndexedDB notes, title search, pin/archive, batch management, trash with 1/3/7/14/30-day retention.
-- Markdown rendering (raw HTML disabled; no externally loaded Markdown images), up to 3 local image attachments, captions, inline `{img_ID}` placement, compression, drawing and text annotation.
-- 0/1/3/5/10/20 reverse text versions (default 3). Images/captions are not versioned. Restore keeps the current images.
-- No encryption, Basic encryption, Secure encryption (AtlasEncrypt v1).
-- Single-note JSON backup/import, fresh note IDs and re-encryption, atomic import. The backup picker exports exactly one note at a time, never the entire library.
-- PWA application-shell caching, install entry, StorageManager estimates and persistence request.
+- Puter login is required for dashboard, notes, editing, trash and settings. Home, docs and policies are public. Online identity is checked on entry, data operations, focus and periodically while visible. Connection failure locks the UI rather than enabling offline use.
+- Dashboard with note count, recent notes, account-wide used/remaining storage, and monthly resource allowance. The right-hand storage value is **remaining**, not total. Allowance is shared across Puter apps, not an Atlas Agent-specific quota. Unknown API values remain unavailable rather than becoming zero.
+- English, Traditional Chinese, Japanese and lightly transformed l33t. Dark/light themes, responsive menus and reduced-motion support.
+- Markdown with raw HTML disabled, no remotely loaded Markdown images, up to three PNG/JPEG/WebP attachments, inline `{img_ID}`, compression, drawing and text annotations.
+- Title search, pin/archive, batch operations, configurable trash retention and 0/1/3/5/10/20 reverse text versions (default 3). Restoring text keeps current images.
+- No encryption, Basic encryption and Secure encryption (AtlasEncrypt).
+- Atlas Agent uses the currently listed GPT-6 Luna model, streams an indeterminate activity indicator, validates JSON, previews title/text and saves only after confirmation. It sends the chosen note's plaintext title/text and prompt, not PINs, keys or images. There is no image generation/editing AI in this preview.
+- Single-note JSON export/import. Imports get a new ID and new encryption for the current account. No app-level JSON file-size gate; browser memory, string and Puter constraints still apply.
+- Installable PWA with illustrated browser instructions. Application-shell caching does **not** permit offline note access.
+
+## Account isolation and storage
+
+Puter's app-private root contains:
+
+```
+atlasnote-v1/
+  account.json             # random account root key; do not delete/replace
+  notes/<note-id>/<change-id>.json
+  blobs/<sha256>.json      # immutable snapshots and image objects
+```
+
+The private KV key `atlasnote.retention.v1` holds text-history/trash preferences. Each account's local cache is isolated in IndexedDB `atlasnote-cloud-<uuid>`, with atomic note/outbox/head transactions. Pending cloud failures do not discard saved data. Authorization comes from Puter, not from a frontend “logged in” flag. A different account never adopts another account's cache.
+
+Cloud change files are immutable and published after referenced objects are uploaded. Head ancestry detects concurrent changes; edits stop on conflict until the user reviews/exports and selects a continuation. Cached change metadata avoids re-downloading every old journal entry. Images are separate content-addressed objects, with encrypted image envelopes reused when unchanged. Network retries retain their change IDs.
+
+**Preview limitation:** internal snapshots/journal records have no verified garbage-collection or provider secure-erasure mechanism yet. Removing a note hides it through a synchronized deletion record, but older objects can remain and consume space. This is explicitly disclosed in policies and deletion UI. Do not claim immediate remote erasure or deploy this as a finished retention/space-reclamation service before that work and real-account QA are complete. Text history does not expose image restoration, but internal synchronization data may still retain older image objects.
+
+Do not manually modify app files in Puter. Lost keys or altered sync data can make notes unreadable. Ordinary JSON backups are portable exports, **not** the cloud serialization format; basic exports contain a note decryption key and must not be reused as “secret” storage envelopes.
 
 ## Encryption boundaries
 
-AtlasEncrypt names only the third, passphrase-protected mode. It is not the name of the entire encryption selection. Internal v1 AAD labels are unchanged to preserve existing local notes.
+Basic mode derives separate AES-256-GCM content/title keys from a random 256-bit account root using HKDF-SHA-256 and note/purpose-bound AAD. The account root syncs through Puter and is held in client memory during use, so **Puter is not cryptographically excluded from basic-mode decryption**. A local non-secret key fingerprint detects missing/replaced cloud keys on previously used devices; missing keys are not silently regenerated over existing cloud notes.
 
-Basic encryption: a random 256-bit device root lives in localStorage. HKDF-SHA-256 derives separate per-note and title keys. AES-256-GCM uses a fresh 96-bit IV and purpose/ID-bound AAD. Basic JSON exports include only the individual content key as Base64, never the device root. **Anyone holding that export can decrypt that note. Base64 is not encryption.**
+AtlasEncrypt uses a random 256-bit per-note key wrapped by a 4–16 printable ASCII PIN with Argon2id (96 MiB, four passes, parallelism 1) and note-bound HKDF. Plaintext PINs and unwrapped secure content keys are not uploaded. Encrypted titles use the account root and remain visible/searchable after sign-in. Weak PINs can be guessed offline. Compromised devices, scripts or malicious client updates remain risks; no independent cryptographic audit is claimed.
 
-Secure encryption: a random 256-bit per-note content key is wrapped using Argon2id (96 MiB, four passes, parallelism 1) and HKDF bound to the note ID. ASCII passphrases are 4–16 characters; weak passphrases remain vulnerable to offline guesses. Plaintext passphrases and unwrapped keys are never persisted. Imported secure copies require their old passphrase and a passphrase for a newly generated key.
+The original `atlasnote-v1` device database and `atlasnote.device-root.v1` localStorage key are preserved. Nothing auto-uploads original notes. Settings offers an explicit single-note copy flow, reads the original data without altering it, and re-encrypts the imported copy. Never test migration against personal data.
 
-Encrypted titles also use an independent device-key envelope for visible/searchable lists. This is **not** passphrase-only title protection. There is no protection against malicious same-origin code or a compromised device while data is unlocked. Keep exported backups; clearing site data or localStorage can destroy device keys. The prototype has not had an independent security audit.
+## Limits and deployment
 
-## Safety and migration
+The original image safeguards remain: 100 MB source files, 67.1 MP decoded images, 8192 px dimensions and 16 MB stored images. These are memory safeguards, not paid plans. Whole-file JSON parsing is not a guarantee of multi-GB import success.
 
-- No destructive import overwrites; note mutations use IndexedDB revision checks to reject stale cross-tab saves.
-- Fixed KDF costs; imports cannot supply arbitrary parameters. No application-level JSON file-size ceiling; exactly one note per backup. Imports still use whole-file JSON parsing, so browser string limits, available memory and IndexedDB quota apply; this is not a guarantee that multi-GB files work on any particular device. Original PNG/JPEG/WebP files up to 100 MB, decoded images up to 67.1 MP, stored images up to 8192 px per dimension and 16 MB each. Compact and Balanced reduce dimensions more than Clear. Header dimensions are checked before decoding; imported dimensions must match. These are memory safeguards, not paid quotas; a device can run out of memory below them.
-- Trash is expired lazily when the app opens, not by a server. JSON backups contain current notes even when exported from trash; imports restore them outside trash.
-- `_headers` is a deployment template, not a guarantee a hosting provider applies it. Verify actual headers before public deployment. No public deployment or GitHub repository has been created.
-- Static assets are vendored locally. Their licenses are preserved under `script/vendor` and `asset/fontawesome`. Original AtlasNote code: all rights reserved by NXLabTW.
+Puter's app identity defines the cloud namespace. Test localhost separately from the final production origin and verify app registration/origin identity before release. No broad filesystem, mailbox or public-file sharing permissions are requested. SDK access is limited in CSP to official Puter script/API/frame origins. `_headers` is a static-host configuration template; verify its actual application when deploying. The service worker caches only own-origin application assets, not cloud responses, decrypted notes or keys.
 
-Contact: atlasnote@nxlabtw.com
+For Puter account, billing, allowance or service incidents use Puter support. For AtlasNote code/UI bugs contact atlasnote@nxlabtw.com. No guarantee is made that a third party compensates losses; applicable non-waivable rights remain.
+
+## Verification
+
+With the local server running, `npm test` runs isolated Puter-contract cloud tests, existing image/drawing/version/trash interactions, compression tests and import validation. `npm run test:puter-login` opens the real official SDK/login window **without** entering credentials. Browser scripts currently use the bundled local Playwright runtime path; adapt that path on other machines.
+
+Cloud QA covers separate devices, account isolation, real WebCrypto/Argon2, incorrect PIN, concurrent edits, conflict resolution, AI preview/confirmation, offline locking and in-memory unsaved-draft restoration, four languages/two themes/eight viewport sizes. A 6 GB import test mocks only file metadata; it is not an actual 6 GB parsing test. Historic local-only test scripts remain for reference and are not evidence of current cloud behavior.
+
+Original software and branding: all rights reserved by NXLabTW. Third-party licenses remain in NOTICE and vendor directories. Contact: atlasnote@nxlabtw.com.
