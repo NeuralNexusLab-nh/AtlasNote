@@ -1,4 +1,5 @@
 import {t,localized as L} from './i18n.js';
+import {docsDetail} from './docs-detail.js';
 export const docKeys=['start','notes','sync','encryption','agent','backup','offline','faq'];
 const titles=['gettingStarted','guideNotes','guideSync','guideEncrypt','agent','guideBackup','guideOffline','guideFAQ'];
 const P=a=>`<p>${L(a)}</p>`;
@@ -27,8 +28,8 @@ export function docsContent(key){
  [['AtlasEncrypt','AtlasEncrypt','AtlasEncrypt'],['A random key encrypts each note’s text and images. A 4–16 ASCII-character PIN protects that key. Puter holds ciphertext, salt and the protected key, not the PIN or unwrapped content key. Titles use the account key and remain visible after sign-in.','每篇筆記以隨機金鑰加密文字與圖片，再以 4～16 位 ASCII PIN 保護該金鑰。Puter 持有密文、隨機鹽值與受保護金鑰，不持有 PIN 或解開的內容金鑰。標題使用帳號金鑰，登入後仍可見。','ノートごとのランダム鍵で文章と画像を暗号化し、4〜16 文字の ASCII PIN で鍵を保護。Puter にあるのは暗号文、ソルト、保護した鍵です。タイトルはアカウント鍵を使い、ログイン後に表示します。']],
  [['Keep your PIN. Trust your device.','保管 PIN，信任裝置。','PIN を保管し、信頼できる端末で。'],['A forgotten PIN cannot be recovered. Prefer long random PINs; someone with ciphertext can guess weak PINs offline. Compromised devices or application code can read unlocked content.','PIN 遺失無法代為找回，請使用長而隨機的 PIN。取得密文者仍可離線猜弱 PIN；遭入侵的裝置或程式也可能讀到解鎖中的內容。','忘れた PIN は復旧できません。長くランダムなものを選んでください。暗号文から弱い PIN は推測可能で、侵害された端末・コードは解除中の内容を読み得ます。']]]],
  agent:[null,['A helping hand for the note you choose.','幫你處理選取的那篇筆記。','選んだノートを、少し手助け。'],[
- [['Ask, preview, save','輸入要求、預覽、儲存','依頼、確認、保存'],['Atlas Agent suggests a title and Markdown text. Your note stays unchanged until you confirm. Images remain unchanged. Keep the generation window open or cancel it.','Atlas Agent 產生建議標題與 Markdown 文字；確認前不修改原筆記，圖片保持不變。生成時請保持視窗開啟，也可取消。','タイトルと Markdown の提案を表示します。確定までは元のノートと画像を変えません。生成中は画面を開いておくか、キャンセルしてください。']],
- [['What is sent','會傳送什麼？','送信する情報'],['Only this note’s title, text and your request go to Puter and the AI provider. AtlasEncrypt must be unlocked first. PINs, keys and images are not sent. Do not submit secrets you do not want the provider to process.','僅將此筆記的標題、文字及要求交給 Puter 與 AI 供應商。AtlasEncrypt 須先解鎖；不傳送 PIN、金鑰或圖片。勿提供你不希望第三方處理的機密。','このノートのタイトル、本文、依頼だけを送ります。AtlasEncrypt は先に解除が必要です。PIN、鍵、画像は送りません。第三者に扱わせたくない秘密は送らないでください。']],
+ [['Ask, preview, save','輸入要求、預覽、儲存','依頼、確認、保存'],['Atlas Agent suggests a title and Markdown text. Your note stays unchanged until you confirm. Select images to let it propose drawing and adjustment commands. Keep the generation window open or cancel it.','Atlas Agent 產生建議標題與 Markdown 文字；確認前不修改原筆記，可選取圖片，讓它提出繪圖與調整指令。生成時請保持視窗開啟，也可取消。','タイトルと Markdown の提案を表示します。確定までは元のノートを変えません。画像を選ぶと描画・調整も提案できます。生成中は画面を開いておくか、キャンセルしてください。']],
+ [['What is sent','會傳送什麼？','送信する情報'],['This note’s title, text, selected images and your request go to Puter and the AI provider. AtlasEncrypt must be unlocked first. PINs and keys are not sent; only explicitly selected images are included. Do not submit secrets you do not want the provider to process.','將此筆記的標題、文字、勾選圖片及要求交給 Puter 與 AI 供應商。AtlasEncrypt 須先解鎖；不傳送 PIN 或金鑰，圖片僅送出明確勾選的那幾張。勿提供你不希望第三方處理的機密。','このノートのタイトル、本文、選択画像、依頼を送ります。AtlasEncrypt は先に解除が必要です。PIN と鍵は送りません。画像は選択したものだけです。第三者に扱わせたくない秘密は送らないでください。']],
  [['Model & allowance','模型與用量','モデルと利用枠'],['GPT-6 Luna is requested when available through Puter. Availability and costs depend on Puter. Usage shares your Puter allowance; it is not unlimited and answers may be wrong.','使用 Puter 可提供的 GPT-6 Luna，供應與費用由 Puter 決定。用量與 Puter 額度共用，不是無限生成，回答也可能有誤。','Puter で提供される GPT-6 Luna を使います。提供と費用は Puter に依存し、共通利用枠を使います。無制限ではなく、誤ることもあります。']]]],
  backup:[null,['Keep a separate copy under your control.','另外留一份，由你保管。','自分で保管する、もう 1 つのコピー。'],[
  [['Export or import one note','匯出或匯入一篇筆記','ノートを 1 件移す'],['Export JSON from a note. Import creates a new note encrypted for the current account, never overwriting an existing note. No app-level JSON size ceiling is imposed, but browser memory and Puter limits still apply.','在筆記頁匯出 JSON。匯入會建立新筆記，依目前帳號重新加密，不覆蓋既有筆記。應用程式不另設 JSON 大小上限，但仍受瀏覽器記憶體及 Puter 限制。','JSON を書き出せます。読み込みは現在のアカウント向けに暗号化した新規ノートを作り、既存のノートを上書きしません。独自のサイズ上限はありませんが、端末と Puter の制限はあります。']],
@@ -43,7 +44,7 @@ export function docsContent(key){
  [['Can I delete app files in Puter?','可以直接刪除 Puter 應用檔案嗎？','Puter のアプリファイルを消してもいい？'],['Do not manually change or delete AtlasNote app data. Missing encryption and sync files may make notes unreadable. Manage data through AtlasNote.','請勿手動修改或刪除 AtlasNote 應用資料；加密或同步檔遺失可能導致筆記無法讀取。請透過 AtlasNote 管理。','手動変更・削除は避けてください。鍵や同期ファイルがなくなると読めなくなる恐れがあります。AtlasNote から管理してください。']]]]
  };
  const row=data[key]||data.start,html=key==='faq'?row[2].map(([q,a])=>`<details><summary>${L(q)}</summary>${P(a)}</details>`).join(''):grid(row[2]);
- return {title:row[0]?L(row[0]):docTitle(key),lead:L(row[1]),html:(key==='start'?flow([['Sign in','登入','ログイン'],['Write','寫下','書く'],['Sync','同步','同期']]):'')+html};
+ return {title:row[0]?L(row[0]):docTitle(key),lead:L(row[1]),html:docsDetail(key)+(key==='start'?flow([['Sign in','登入','ログイン'],['Write','寫下','書く'],['Sync','同步','同期']]):'')+html};
 }
 export {policy} from './policies.js';
 export const docTitle=k=>t(titles[docKeys.indexOf(k)]||'gettingStarted');

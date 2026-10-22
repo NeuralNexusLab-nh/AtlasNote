@@ -7,6 +7,8 @@ import {requestInstall,refreshInstallButtons} from './install.js';
 import {compressImage} from './images.js';
 import * as Cloud from './cloud.js';
 import * as CloudUI from './cloud-ui.js';
+import * as Unlock from './unlock-cache.js';
+import {homeDetails} from './home-content.js';
 
 const $=(s,root=document)=>root.querySelector(s),$$=(s,root=document)=>[...root.querySelectorAll(s)];
 export const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -41,7 +43,7 @@ function dialog({title,body='',confirm='gotIt',cancel=false,danger=false,form=fa
     el.addEventListener('cancel',e=>{e.preventDefault();if(cancel)finish(null);else if(!onSubmit)finish(true);});
     // Backdrop clicks intentionally do not dismiss dialogs.
     $('[data-confirm]',el).addEventListener('click',async()=>{
-      const btn=$('[data-confirm]',el);if(onSubmit){btn.disabled=true;try{const value=await onSubmit(el);if(value!==false)finish(value??true);}catch(e){let err=$('.dialog-error',el);if(!err){err=document.createElement('p');err.className='dialog-error';err.setAttribute('role','alert');$('.dialog-body',el).append(err);}err.textContent=t(e.message==='OperationError'?'unlockError':e.message)||t('unlockError');}finally{btn.disabled=false;}}else finish(true);
+      const btn=$('[data-confirm]',el);if(onSubmit){btn.disabled=true;try{const value=await onSubmit(el);if(value!==false)finish(value??true);}catch(e){let err=$('.dialog-error',el);if(!err){err=document.createElement('p');err.className='dialog-error';err.setAttribute('role','alert');$('.dialog-body',el).append(err);}const errorKey=e.name==='OperationError'?'unlockError':e.message,translated=t(errorKey);err.textContent=translated&&translated!==errorKey?translated:t(Cloud.errorKey(e));}finally{btn.disabled=false;}}else finish(true);
     });
     el.showModal();onOpen?.(el);setTimeout(()=>$('.input',el)?.focus(),50);
     if(form)el.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('input')){e.preventDefault();$('[data-confirm]',el).click();}});
@@ -54,12 +56,12 @@ function download(value,name){const blob=new Blob([JSON.stringify(value,null,2)]
 async function copyText(text){try{await navigator.clipboard.writeText(text);}catch{const area=document.createElement('textarea');area.value=text;area.className='sr-only';document.body.append(area);area.select();const success=document.execCommand('copy');area.remove();if(!success)throw new Error('cryptoError');}showLive(t('copied'));}
 
 function chrome(){
-  const nav=[['home','house','/'],['dashboard','gauge-high','/dashboard.html'],['notes','book-open','/notes.html'],['trash','trash-can','/trash.html'],['docs','book','/docs.html'],['settings','sliders','/settings.html']];
+  const nav=(Cloud.signedIn()?[['home','house','/'],['dashboard','gauge-high','/dashboard.html'],['notes','book-open','/notes.html'],['trash','trash-can','/trash.html'],['docs','book','/docs.html'],['settings','sliders','/settings.html']]:[['home','house','/'],['docs','book','/docs.html']]);
   $('#navbar').innerHTML=`<a class="brand" href="/" aria-label="AtlasNote"><img src="/asset/logo.svg" alt="" width="31" height="31"><span>AtlasNote</span></a><nav class="nav-links" aria-label="${t('home')}">${nav.map(([key,ico,url])=>`<a class="nav-link ${currentPage===key||key==='notes'&&['note','edit'].includes(currentPage)?'active':''}" href="${url}" ${currentPage===key?'aria-current="page"':''}>${icon(ico)}<span>${t(key)}</span></a>`).join('')}</nav><div class="nav-actions">${iconButton(prefs.theme==='dark'?'light':'dark',prefs.theme==='dark'?'sun':'moon','data-theme-toggle','theme-toggle')}<select class="language-select" aria-label="${t('language')}" id="language"><option value="en">English</option><option value="zh-Hant">繁體中文</option><option value="ja">日本語</option><option value="leet">l33t</option></select>${iconButton('filter','bars','data-menu aria-expanded="false"','mobile-toggle')}</div>`;
   $('#language').value=getLanguage();
   const syncBadge=document.createElement('button');syncBadge.type='button';syncBadge.className='sync-badge';syncBadge.dataset.cloudStatus='';$('.nav-actions').prepend(syncBadge);updateCloudStatus();bind(syncBadge,'click',async()=>{if(!Cloud.profile()){location.href='/dashboard.html';return;}if(Cloud.status()==='conflict')return CloudUI.conflictManager();await Cloud.sync();updateCloudStatus();});
   bind($('#language'),'change',async e=>{if(editorDirty&&!await dialog({title:t('discard'),body:`<p>${t('discardWarning')}</p>`,confirm:'discard',cancel:true})){e.target.value=getLanguage();return;}editorDirty=false;prefs={...prefs,language:e.target.value};S.savePreferences(prefs);setLanguage(prefs.language);await render();});
-  const installButton=document.createElement('button');installButton.type='button';installButton.className='icon-btn';installButton.dataset.installControl='';installButton.title=t('install');installButton.setAttribute('aria-label',t('install'));installButton.innerHTML=icon('download');$('.nav-actions').prepend(installButton);bind(installButton,'click',install);refreshInstallButtons();
+
   bind($('[data-theme-toggle]'),'click',()=>{prefs={...prefs,theme:prefs.theme==='dark'?'light':'dark'};S.savePreferences(prefs);document.documentElement.dataset.theme=prefs.theme;chrome();});
   bind($('[data-menu]'),'click',e=>{const open=$('#navbar').classList.toggle('open');e.currentTarget.setAttribute('aria-expanded',String(open));});
   $('#footer').innerHTML=`<div class="footer-links"><a href="/terms.html">${t('terms')}</a><a href="/privacy.html">${t('privacy')}</a><a href="mailto:atlasnote@nxlabtw.com">${icon('envelope')}${t('contact')}</a></div><p class="footer-tagline">${t('tagline')}</p><p>AtlasNote · © ${new Date().getFullYear()} <a href="https://nxlabtw.com" rel="noopener noreferrer">NXLabTW</a></p>`;
@@ -87,8 +89,9 @@ async function home(){
   };
   scene(0);$$('[data-scene]').forEach(b=>bind(b,'click',()=>scene(Number(b.dataset.scene))));
   bind($('[data-hero-install]'),'click',install);
-  const primary=$('.hero-copy .primary');primary.href='/dashboard.html';primary.querySelector('span').textContent=t(Cloud.profile()?'openDashboard':'login');primary.querySelector('i').className='fa-solid fa-'+(Cloud.profile()?'gauge-high':'right-to-bracket');
+  const primary=$('.hero-copy .primary');primary.href='/dashboard.html';primary.querySelector('span').textContent=t(Cloud.profile()?'openDashboard':'login');primary.setAttribute('aria-label',primary.querySelector('span').textContent);primary.querySelector('i').className='fa-solid fa-'+(Cloud.profile()?'gauge-high':'right-to-bracket');
   $('.preview-bottom a').href='/dashboard.html';
+  main.insertAdjacentHTML('beforeend',homeDetails(Cloud.signedIn()));
 }
 async function storageCard(){
   return CloudUI.resources();
@@ -114,7 +117,7 @@ async function listPage(isTrash=false){
 async function actNotes(ids,action){
   if(action==='delete'&&!await dialog({title:t('deleteForever'),body:`<p>${t('deleteWarning')}</p>`,confirm:'deleteForever',cancel:true,danger:true}))return;
   for(const id of ids){const n=await S.get(id);if(!n)continue;
-    if(action==='delete')await S.remove(id,n.rev);
+    if(action==='delete'){await S.remove(id,n.rev);await Unlock.forget(n);}
     else await S.updateMeta(id,action==='pin'?{pinned:!n.pinned}:action==='archive'?{archived:!n.archived}:action==='restore'?{trashedAt:null}:{trashedAt:new Date().toISOString(),trashDays:prefs.trashDays});
   }
   selection.clear();if(currentPage==='note'){location.href='/trash.html';return;}await listPage(currentPage==='trash');
@@ -125,8 +128,9 @@ async function askPIN(key='importPIN'){
 }
 async function unlockNote(note){
   let unlocked;
+  const cached=await Unlock.cached(note);if(cached){try{return {key:cached,payload:await S.decodeRecord(note,cached)};}catch{cached.fill(0);await Unlock.forget(note);}}
   const ok=await dialog({title:await C.readTitle(note)||t('unlockTitle'),body:`<label class="field-label" for="vault-input">${t('pinLabel')}</label><input class="input" type="password" id="vault-input" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore maxlength="16"><p class="hint">${t('pinRules')}</p>`,confirm:'unlock',cancel:true,form:true,onSubmit:async el=>{
-    const pin=$('input',el).value;if(!C.validatePIN(pin))throw new Error('pinRules');let key;try{key=await C.unlockVault(note,pin);const payload=await S.decodeRecord(note,key);unlocked={key,payload};return true;}catch{key?.fill(0);throw new Error('unlockError');}
+    const pin=$('input',el).value;if(!C.validatePIN(pin))throw new Error('pinRules');let key;try{key=await C.unlockVault(note,pin);const payload=await S.decodeRecord(note,key);await Unlock.remember(note,key);unlocked={key,payload};return true;}catch{key?.fill(0);throw new Error('unlockError');}
   }});
   return ok?unlocked:null;
 }
@@ -134,17 +138,17 @@ function clearKeys(){opened?.key?.fill(0);editor?.key?.fill(0);opened=null;edito
 async function notePage(){
   const n=await S.get(newId());if(!n)throw new Error('notFound');
   const title=await C.readTitle(n)||t('untitled');
-  main.innerHTML=`<section class="note-page"><header class="note-header"><p class="eyebrow">${icon('asterisk')}${t(n.trashedAt?'trash':'notes')}</p><div class="note-title-row"><h1>${escape(title)}</h1><span class="pill accent">${icon(n.mode==='none'?'file-lines':'lock')}${t(n.mode)}</span></div><div class="note-meta"><span>${t('edited')} ${date(n.updatedAt)}</span><span>${size(n.size)}</span><span id="word-count"></span></div></header><div class="actions note-actions">${button('copy','copy','data-copy','icon-mobile')}${linkButton('edit','pen','/edit.html?id='+n.id,'primary')}${button('history','clock-rotate-left','data-history','icon-mobile')}${button('export','download','data-export','icon-mobile')}${n.mode==='secure'?button('lock','lock','data-lock','icon-mobile'):''}${n.trashedAt?button('restore','rotate-left','data-restore'):button('moveTrash','trash-can','data-trash','danger icon-mobile')}</div><article class="note-paper" id="note-content"></article></section>`;
+  main.innerHTML=`<section class="note-page"><header class="note-header"><p class="eyebrow">${icon('asterisk')}${t(n.trashedAt?'trash':'notes')}</p><div class="note-title-row"><h1>${escape(title)}</h1><span class="pill accent">${icon(n.mode==='none'?'file-lines':'lock')}${t(n.mode)}</span></div><div class="note-meta"><span>${t('edited')} ${date(n.updatedAt)}</span><span>${size(n.size)}</span><span id="word-count"></span></div></header><div class="actions note-actions">${button('copy','copy','data-copy','icon-mobile')}${linkButton('edit','pen','/edit.html?id='+n.id,'primary')}${!n.trashedAt?button('agent','wand-magic-sparkles','data-agent','primary icon-mobile'):''}${button('history','clock-rotate-left','data-history','icon-mobile')}${button('export','download','data-export','icon-mobile')}${n.mode==='secure'?button('lock','lock','data-lock','icon-mobile'):''}${n.trashedAt?button('restore','rotate-left','data-restore'):button('delete','trash-can','data-trash','danger icon-mobile')}</div><article class="note-paper" id="note-content"></article></section>`;
   const content=$('#note-content');
   const draw=payload=>{content.innerHTML='';content.append(prose(payload.text,payload.images));$('#word-count').textContent=`${Array.from(payload.text).length} ${t('characters')}`;};
   if(n.mode==='secure'){
-    opened={note:n,key:null,payload:null};content.innerHTML=`<div class="locked-card"><div class="lock-icon">${icon('lock')}</div><h2>${t('locked')}</h2><p>${t('sessionOnly')}</p>${button('unlock','unlock-keyhole','data-unlock','primary')}</div>`;
+    opened={note:n,key:null,payload:null};const cached=await Unlock.cached(n);if(cached){try{opened={note:n,key:cached,payload:await S.decodeRecord(n,cached)};draw(opened.payload);}catch{cached.fill(0);await Unlock.forget(n);}}if(!opened.payload)content.innerHTML=`<div class="locked-card"><div class="lock-icon">${icon('lock')}</div><h2>${t('locked')}</h2><p>${t('sessionOnly')}</p>${button('unlock','unlock-keyhole','data-unlock','primary')}</div>`;
     bind($('[data-unlock]'),'click',async()=>{const result=await unlockNote(n);if(result){opened={note:n,...result};draw(result.payload);}});
   }else{opened={note:n,key:null,payload:await S.decodeRecord(n)};draw(opened.payload);}
   bind($('[data-copy]'),'click',async e=>{if(!opened.payload){const result=await unlockNote(n);if(!result)return;opened={note:n,...result};draw(result.payload);}await copyText(opened.payload.text);const b=e.currentTarget;b.innerHTML=icon('check')+`<span class="compact-label">${t('copied')}</span>`;setTimeout(()=>{if(b.isConnected)b.innerHTML=icon('copy')+`<span class="compact-label">${t('copy')}</span>`;},1800);});
   bind($('[data-export]'),'click',()=>exportNotes([n]));bind($('[data-history]'),'click',async()=>{if(!opened.payload){const result=await unlockNote(n);if(!result)return;opened={note:n,...result};draw(result.payload);}await historyDialog(opened);});
-  bind($('[data-lock]'),'click',async()=>{clearKeys();await notePage();});bind($('[data-trash]'),'click',()=>actNotes([n.id],'trash'));bind($('[data-restore]'),'click',async()=>{await S.updateMeta(n.id,{trashedAt:null});await notePage();});
-  if(!n.trashedAt){const agent=document.createElement('button');agent.type='button';agent.className='button primary icon-mobile';agent.setAttribute('aria-label',t('agent'));agent.title=t('agent');agent.innerHTML=icon('asterisk')+`<span class="compact-label">${t('agent')}</span>`;$('.note-actions').prepend(agent);bind(agent,'click',async()=>{if(!opened.payload){const result=await unlockNote(n);if(!result)return;opened={note:n,...result};draw(result.payload);}await CloudUI.agent(opened);});}
+  bind($('[data-lock]'),'click',async()=>{await Unlock.forget(n);clearKeys();await notePage();});bind($('[data-trash]'),'click',()=>actNotes([n.id],'trash'));bind($('[data-restore]'),'click',async()=>{await S.updateMeta(n.id,{trashedAt:null});await notePage();});
+  bind($('[data-agent]'),'click',async()=>{if(!opened.payload){const result=await unlockNote(n);if(!result)return;opened={note:n,...result};draw(result.payload);}await CloudUI.agent(opened);});
 }
 async function historyDialog(state){
   const versions=[];let title=state.payload.title,text=state.payload.text;
@@ -197,7 +201,7 @@ async function editPage(){
     try{
       if(!editor.payload.title.trim())throw new Error('limitError');
       if(!id&&editor.note.mode==='secure'){const vault=await C.createVault(editor.note.id,$('#new-pin-value').value);editor.key=vault.key;editor.note.salt=vault.salt;editor.note.wrap=vault.wrap;}
-      editor.note=await S.saveNote(editor.note,editor.payload,editor.key,editor.previous);editorDirty=false;location.href=noteURL(editor.note.id);
+      editor.note=await S.saveNote(editor.note,editor.payload,editor.key,editor.previous);if(editor.key)await Unlock.remember(editor.note,editor.key);editorDirty=false;location.href=noteURL(editor.note.id);
     }finally{btn.innerHTML=icon('check')+`<span class="compact-label">${t('save')}</span>`;btn.disabled=false;}
   });
   bind($('[data-add-images]'),'click',()=>$('#image-files').click());bind($('#image-files'),'change',async e=>{await addImages([...e.target.files]);e.target.value='';update();});
@@ -301,7 +305,7 @@ async function render(){
 }
 CloudUI.configureUI({icon,button,linkButton,escape,size,bind,dialog,alertMessage,prose,render,download,askPIN});
 function updateCloudStatus(){const badge=$('[data-cloud-status]');if(!badge)return;const state=Cloud.status(),key=['synced','syncing','pending','connecting','signedOut','offline'].includes(state)?state:state==='conflict'?'resolve':'cloudError';badge.innerHTML=icon(state==='synced'?'cloud':state==='conflict'?'triangle-exclamation':state==='signedOut'?'right-to-bracket':'rotate')+`<span>${escape(t(key))}</span>`;badge.setAttribute('aria-label',t(key));badge.title=t(state.startsWith('cloud')?state:key);badge.dataset.state=state;}
-window.addEventListener('atlas-cloud',updateCloudStatus);
+window.addEventListener('atlas-cloud',()=>{if($('.nav-link').length!==(Cloud.signedIn()?6:2))chrome();else updateCloudStatus();});
 window.addEventListener('atlas-access-lost',()=>{if(['dashboard','notes','trash','note','edit','settings'].includes(currentPage)){if(editor&&editorDirty){pausedDraft={owner:Cloud.profile()?.uuid,note:structuredClone(editor.note),payload:structuredClone(editor.payload),key:editor.key?new Uint8Array(editor.key):null};}clearKeys();document.querySelectorAll('dialog').forEach(d=>{d.dispatchEvent(new Event('atlas-dismiss'));if(d.isConnected){d.close();d.remove();}});CloudUI.loginGate();}});
 const cloudBoot=Cloud.boot().then(async p=>{if(p){try{const saved=await Cloud.retention();if(saved){prefs={...prefs,...saved};S.savePreferences(prefs);}}catch{}}return p;});
 await render();

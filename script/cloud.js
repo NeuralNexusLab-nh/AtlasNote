@@ -1,6 +1,8 @@
 /* Puter boundary: no developer credentials, no public file URLs, no legacy data upload. */
 import * as S from './store.js';
 import * as C from './crypto.js';
+import * as Unlock from './unlock-cache.js';
+import {responseSchema} from './agent-images.js';
 let sdkPromise,user=null,ready=false,session=0,syncTask=null,timer=null;
 let state='signedOut';
 const ROOT='atlasnote-v1';
@@ -9,6 +11,7 @@ const HASH=/^[a-f0-9]{64}$/;
 const utf8=new TextEncoder();
 export const profile=()=>user?{uuid:user.uuid,username:user.username,emailConfirmed:!!user.email_confirmed}:null;
 export const status=()=>state;
+export const signedIn=()=>ready&&!!user;
 function notify(value){state=value;window.dispatchEvent(new CustomEvent('atlas-cloud',{detail:{state}}));}
 function missing(e){return e?.status===404||e?.error?.status===404||['ENOENT','not_found','subject_does_not_exist'].includes(e?.code)||['ENOENT','not_found','subject_does_not_exist'].includes(e?.error?.code);}
 export function errorKey(e){const code=e?.code||e?.error?.code||e?.error||e?.message;return e?.status===402||['insufficient_funds','subscription_required'].includes(code)?'cloudCredit':e?.status===413||code==='storage_limit_reached'?'cloudFull':e?.status===429||code==='too_many_requests'?'cloudRate':['cloudAuth','cloudOffline','cloudConflict','cloudInvalid','cloudPending','cloudKey'].includes(code)?code:'cloudError';}
@@ -20,7 +23,7 @@ export function sdk(){
 }
 async function identity(){if(!navigator.onLine)throw new Error('cloudOffline');const p=await sdk();if(!p.auth.isSignedIn())throw new Error('cloudAuth');const u=await deadline(p.auth.getUser());if(!u||typeof u.uuid!=='string'||!/^[a-zA-Z0-9-]{1,100}$/.test(u.uuid)||u.is_temp)throw new Error('cloudAuth');return u;}
 export async function authorize(){if(!ready||!user)throw new Error('cloudAuth');try{const u=await identity();if(u.uuid!==user.uuid)throw new Error('cloudAuth');return u;}catch(e){suspend(errorKey(e));throw e;}}
-function suspend(reason){ready=false;C.useAccountKey(null);notify(reason==='cloudAuth'?'signedOut':'offline');window.dispatchEvent(new CustomEvent('atlas-access-lost'));}
+function suspend(reason){if(reason==='cloudAuth')Unlock.forgetAll();ready=false;C.useAccountKey(null);notify(reason==='cloudAuth'?'signedOut':'offline');window.dispatchEvent(new CustomEvent('atlas-access-lost'));}
 export async function signIn(){const p=await sdk();++session;ready=false;clearTimeout(timer);await p.auth.signIn({attempt_temp_user_creation:false,request_auth:true});return connect();}
 export async function connect(){
   const ticket=++session;ready=false;clearTimeout(timer);if(syncTask)await syncTask.catch(()=>{});C.useAccountKey(null);notify('connecting');
@@ -30,13 +33,13 @@ export async function connect(){
     try{config=await readJSON(ROOT+'/account.json',4000);}catch(e){if(!missing(e))throw e;if(localStorage.getItem('atlasnote.cloud-key-check.'+next.uuid)||(await list(ROOT+'/notes')).length)throw new Error('cloudKey');const candidate={format:'AtlasNoteAccount',version:1,owner:next.uuid,root:C.b64(C.random(32)),createdAt:new Date().toISOString()};try{await p.fs.write(ROOT+'/account.json',JSON.stringify(candidate),{overwrite:false,createMissingParents:true});}catch(writeError){/* Another device may have initialized the same account. Read the winner, never replace it. */try{config=await readJSON(ROOT+'/account.json',4000);}catch{throw writeError;}}config??=await readJSON(ROOT+'/account.json',4000);}
     if(config.format!=='AtlasNoteAccount'||config.version!==1||config.owner!==next.uuid||C.unb64(config.root).length!==32)throw new Error('cloudKey');
     const check=await hash(config.root),old=localStorage.getItem('atlasnote.cloud-key-check.'+next.uuid);if(old&&old!==check)throw new Error('cloudKey');localStorage.setItem('atlasnote.cloud-key-check.'+next.uuid,check);
-    if(ticket!==session)throw new Error('cloudAuth');user=next;C.useAccountKey(C.unb64(config.root));ready=true;
+    if(ticket!==session)throw new Error('cloudAuth');user=next;await Unlock.beginSession(next.uuid,p.authToken);if(ticket!==session)throw new Error('cloudAuth');C.useAccountKey(C.unb64(config.root));ready=true;
     S.configureAccount(user.uuid,{authorize,prepare:async record=>{await authorize();return {id:crypto.randomUUID(),noteId:record.id,parents:[],record:structuredClone(record),deleted:false,at:new Date().toISOString()};},changed:()=>{notify('pending');schedule();},remove:removeNote});
     try{await sync();}catch(e){if(['cloudAuth','cloudOffline','cloudKey','cloudInvalid'].includes(errorKey(e)))throw e;}return profile();
-  }catch(e){ready=false;C.useAccountKey(null);notify(errorKey(e)==='cloudAuth'?'signedOut':'offline');throw e;}
+  }catch(e){if(ticket!==session)throw e;ready=false;C.useAccountKey(null);notify(errorKey(e)==='cloudAuth'?'signedOut':'offline');throw e;}
 }
 export async function boot(){try{const p=await sdk();if(!p.auth.isSignedIn()){notify('signedOut');return null;}return await connect();}catch{return null;}}
-export async function signOut(){await authorize();if((await S.rawAll('outbox')).length){await sync();if((await S.rawAll('outbox')).length)throw new Error('cloudPending');}++session;clearTimeout(timer);const p=await sdk();await p.auth.signOut();user=null;ready=false;S.detachAccount();notify('signedOut');}
+export async function signOut(){await authorize();if((await S.rawAll('outbox')).length){await sync();if((await S.rawAll('outbox')).length)throw new Error('cloudPending');}++session;clearTimeout(timer);const p=await sdk();await p.auth.signOut();user=null;ready=false;Unlock.forgetAll();S.detachAccount();notify('signedOut');}
 function schedule(){clearTimeout(timer);timer=setTimeout(()=>sync().catch(()=>{}),250);}
 export async function readJSON(path,max=100_000_000){const file=await (await sdk()).fs.read(path);if(!file||file.size>max)throw new Error('cloudInvalid');let value;try{value=JSON.parse(await file.text());}catch{throw new Error('cloudInvalid');}return value;}
 async function hash(value){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',utf8.encode(value)))].map(v=>v.toString(16).padStart(2,'0')).join('');}
@@ -69,7 +72,7 @@ export async function resolveConflict(id,chosen){await authorize();const conflic
 export async function usage(){await authorize();const p=await sdk(),[space,monthly]=await Promise.allSettled([p.fs.space(),p.auth.getMonthlyUsage()]);return {space:space.status==='fulfilled'?space.value:null,monthly:monthly.status==='fulfilled'?monthly.value:null};}
 export async function saveRetention(prefs){await authorize();await (await sdk()).kv.set('atlasnote.retention.v1',{history:prefs.history,trashDays:prefs.trashDays});}
 export async function retention(){await authorize();const v=await (await sdk()).kv.get('atlasnote.retention.v1');return v&&[0,1,3,5,10,20].includes(v.history)&&[1,3,7,14,30].includes(v.trashDays)?v:null;}
-export async function agent(messages,onChunk,signal){await authorize();const p=await sdk(),models=await p.ai.listModels(),candidate=models.find(m=>m.id==='openai/gpt-6-luna')||models.find(m=>m.id==='gpt-6-luna');if(!candidate)throw new Error('agentUnavailable');const result=await p.ai.chat(messages,{model:candidate.id,stream:true,max_tokens:12000,signal});let text='';for await(const chunk of result){if(signal.aborted)throw new DOMException('Aborted','AbortError');if(chunk.text){text+=chunk.text;onChunk(text.length);if(text.length>200000)throw new Error('agentInvalid');}}return text;}
+export async function agent(messages,onChunk,signal){await authorize();const p=await sdk(),models=await p.ai.listModels(),candidate=models.find(m=>m.id==='openai/gpt-6-luna')||models.find(m=>m.id==='gpt-6-luna');if(!candidate)throw new Error('agentUnavailable');const result=await p.ai.chat(messages,{model:candidate.id,stream:true,max_tokens:12000,outputFormat:{type:'json_schema',schema:responseSchema,name:'atlas_note_edit',strict:true},signal});let text='';for await(const chunk of result){if(signal.aborted)throw new DOMException('Aborted','AbortError');if(chunk.type==='error')throw new Error('agentFailed');if(chunk.text){text+=chunk.text;onChunk(text.length);if(text.length>200000)throw new Error('agentInvalid');}}return text;}
 window.addEventListener('offline',()=>{if(user)suspend('cloudOffline');});
 window.addEventListener('focus',()=>{if(ready)authorize().then(()=>sync()).catch(()=>{});});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&ready)authorize().catch(()=>{});});
