@@ -1,5 +1,6 @@
 // Added to the existing dictionary; l33t continues to use its existing transform.
 export const cloudWords={
+ homeStart:['Get started','立即開始','今すぐ始める'],
  trashReadOnly:['This note is in the trash. Restore it before editing.','此筆記在垃圾桶中，還原後即可編輯。','このノートはゴミ箱にあります。編集するには復元してください。'],
  history:['Previous version','上一版本','前のバージョン'],lock:['Lock note','鎖定筆記','ノートをロック'],delete:['Delete','刪除','削除'],agentImages:['Images to edit','要處理的圖片','編集する画像'],agentImageHelp:['Select only images you want AI to see. Crop, rotate, adjust light, add text or mark a detail.','只勾選要交給 AI 的圖片。可裁切、旋轉、調整明暗、加字或標記重點。','AI に見せる画像だけを選択。切り抜き、回転、明るさ、文字や印を追加できます。'],agentConsent:['The title, text, your request and selected images are sent through Puter to the AI provider. PINs and encryption keys are never included.','標題、文字、要求及勾選圖片會透過 Puter 傳給 AI 供應商；不包含 PIN 或加密金鑰。','タイトル、本文、依頼、選択した画像を Puter 経由で AI 提供元に送信します。PIN と暗号鍵は含めません。'],agentFailed:['AI could not finish this request. Your original note was not changed.','AI 未能完成要求，原筆記尚未變更。','AI の処理を完了できませんでした。元のノートは変更していません。'],cacheNotice:['Unlocked until you lock this note or sign out of this tab.','解鎖狀態保留至你鎖定筆記或登出。','ノートをロックするかログアウトするまで解除状態を保持します。'],
  agentDesc:['Turn a rough draft into a clearer note. Preview, then save.','讓草稿更清楚、重點更好讀。預覽滿意，再儲存。','下書きを、もっと分かりやすく。確認してから保存。'],
