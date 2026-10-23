@@ -1,5 +1,6 @@
 // Added to the existing dictionary; l33t continues to use its existing transform.
 export const cloudWords={
+ copyFailed:['Could not copy automatically. Select the note content and copy it manually.','無法自動複製。請選取筆記內容，再手動複製。','自動でコピーできませんでした。本文を選択して手動でコピーしてください。'],
 audit_title:['Read-only cloud check','唯讀雲端檢查','クラウドの読み取り専用チェック'],
  audit_intro:['Checks AtlasNote folders and change records only. It does not open note contents, read account keys, save, clean up or delete anything.','只檢查 AtlasNote 目錄與變更紀錄。不開啟筆記內容、不讀取帳號金鑰，也不會儲存、清理或刪除任何資料。','AtlasNote のフォルダーと変更記録のみ確認します。ノート本文やアカウント鍵の読み取り、保存、整理、削除は行いません。'],
  audit_start:['Check existing files','檢查現存檔案','既存ファイルを確認'],

@@ -71,6 +71,7 @@ body:not([data-page=home]) .starfield{opacity:.28}
 @media(max-width:360px){.nav-actions>button:first-child{display:inline-flex}}
 @media(max-width:600px){.note-actions{align-items:stretch}.note-actions .button{height:100%}.guide-table td{grid-template-columns:110px minmax(0,1fr)}}
 @media(max-width:360px){.note-actions .button{font-size:12px;padding-inline:10px;gap:7px}}
+@media(max-width:600px){.note-actions:has(>[data-lock][hidden])>[data-trash]:last-child,.note-actions:has(>[data-lock][hidden])>[data-permanent-delete]:last-child{grid-column:1/-1}}
 
 /* Account actions and storage are deliberately separate. */
 .nav-auth{white-space:nowrap;min-height:44px;padding:9px 13px}.nav-auth i{font-size:14px}

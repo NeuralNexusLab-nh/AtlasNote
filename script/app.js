@@ -51,9 +51,17 @@ function dialog({title,body='',confirm='gotIt',cancel=false,danger=false,form=fa
   });
 }
 async function alertMessage(message,title=t('error')){return dialog({title,body:`<p>${escape(message)}</p>`});}
-async function fail(error){console.error('[AtlasNote]',error.name,error.message);const key=error.name==='QuotaExceededError'?'storageFull':error.name==='SecurityError'?'storageDisabled':['unexpectedError','storageFull','storageDisabled','storageError','storageBlocked','missingKey','conflict','notFound','pinRules','invalidData','invalidImage','imageLimit','limitError','cryptoError'].includes(error.message)?error.message:error.name==='OperationError'?'unlockError':Cloud.errorKey(error);return alertMessage(t(key));}
+async function fail(error){console.error('[AtlasNote]',error.name,error.message);const key=error.name==='QuotaExceededError'?'storageFull':error.name==='SecurityError'?'storageDisabled':['unexpectedError','storageFull','storageDisabled','storageError','storageBlocked','missingKey','conflict','notFound','pinRules','invalidData','invalidImage','imageLimit','limitError','cryptoError','copyFailed'].includes(error.message)?error.message:error.name==='OperationError'?'unlockError':Cloud.errorKey(error);return alertMessage(t(key));}
 function bind(el,event,fn){el?.addEventListener(event,async e=>{try{await fn(e);}catch(error){await fail(error);}});}
-async function copyText(text){try{await navigator.clipboard.writeText(text);}catch{const area=document.createElement('textarea');area.value=text;area.className='sr-only';document.body.append(area);area.select();const success=document.execCommand('copy');area.remove();if(!success)throw new Error('cryptoError');}showLive(t('copied'));}
+async function copyText(text){
+  try{await navigator.clipboard.writeText(text);}catch{
+    const previous=document.activeElement,area=document.createElement('textarea');area.value=text;area.className='sr-only';area.readOnly=true;document.body.append(area);
+    try{area.focus({preventScroll:true});area.select();if(!document.execCommand('copy'))throw new Error('copyFailed');}
+    catch{throw new Error('copyFailed');}
+    finally{area.remove();if(previous?.isConnected)previous.focus({preventScroll:true});}
+  }
+  showLive(t('copied'));
+}
 
 function chrome(){
   const nav=(Cloud.signedIn()?[['home','house','/'],['dashboard','table-columns','/dashboard.html'],['notes','book-open','/notes.html'],['trash','trash-can','/trash.html'],['docs','book','/docs.html'],['settings','sliders','/settings.html']]:[['home','house','/'],['docs','book','/docs.html']]);
@@ -140,12 +148,13 @@ async function notePage(){
   const title=await C.readTitle(n)||t('untitled');
   main.innerHTML=`<section class="note-page"><header class="note-header"><p class="eyebrow">${icon('note-sticky')}${t(n.trashedAt?'trash':'notes')}</p><div class="note-title-row"><h1>${escape(title)}</h1><span class="pill accent">${icon(n.mode==='none'?'file-lines':'lock')}${t(n.mode)}</span></div><div class="note-meta"><span>${t('edited')} ${date(n.updatedAt)}</span><span>${size(n.size)}</span><span id="word-count"></span></div></header><div class="actions note-actions">${button('copy','copy','data-copy','icon-mobile')}${!n.trashedAt?linkButton('edit','pen','/edit.html?id='+n.id,'primary'):''}${!n.trashedAt?button('agent','wand-magic-sparkles','data-agent','primary icon-mobile'):''}${!n.trashedAt?button('history','clock-rotate-left','data-history','icon-mobile'):''}${n.mode==='secure'?button('lock','lock','data-lock','icon-mobile'):''}${n.trashedAt?button('restore','rotate-left','data-restore','primary')+button('deleteForever','trash-can','data-permanent-delete','danger'):button('delete','trash-can','data-trash','danger icon-mobile')}</div>${n.trashedAt?`<p class="trash-note-banner">${icon('trash-can')}${t('trashReadOnly')}</p>`:''}<article class="note-paper" id="note-content"></article></section>`;
   const content=$('#note-content');
-  const draw=payload=>{content.innerHTML='';content.append(prose(payload.text,payload.images));$('#word-count').textContent=`${Array.from(payload.text).length} ${t('characters')}`;};
+  const lockButton=$('[data-lock]');if(lockButton)lockButton.hidden=true;
+  const draw=payload=>{content.innerHTML='';content.append(prose(payload.text,payload.images));$('#word-count').textContent=`${Array.from(payload.text).length} ${t('characters')}`;if(lockButton)lockButton.hidden=false;};
   if(n.mode==='secure'){
     opened={note:n,key:null,payload:null};const cached=await Unlock.cached(n);if(cached){try{opened={note:n,key:cached,payload:await S.decodeRecord(n,cached)};draw(opened.payload);}catch{cached.fill(0);await Unlock.forget(n);}}if(!opened.payload)content.innerHTML=`<div class="locked-card"><div class="lock-icon">${icon('lock')}</div><h2>${t('locked')}</h2><p>${t('sessionOnly')}</p>${button('unlock','unlock-keyhole','data-unlock','primary')}</div>`;
     bind($('[data-unlock]'),'click',async()=>{const result=await unlockNote(n);if(result){opened={note:n,...result};draw(result.payload);}});
   }else{opened={note:n,key:null,payload:await S.decodeRecord(n)};draw(opened.payload);}
-  bind($('[data-copy]'),'click',async e=>{if(!opened.payload){const result=await unlockNote(n);if(!result)return;opened={note:n,...result};draw(result.payload);}await copyText(opened.payload.text);const b=e.currentTarget;b.innerHTML=icon('check')+`<span class="compact-label">${t('copied')}</span>`;setTimeout(()=>{if(b.isConnected)b.innerHTML=icon('copy')+`<span class="compact-label">${t('copy')}</span>`;},1800);});
+  bind($('[data-copy]'),'click',async e=>{const b=e.currentTarget;b.disabled=true;try{if(!opened.payload){const result=await unlockNote(n);if(!result)return;opened={note:n,...result};draw(result.payload);}await copyText(opened.payload.text);if(!b.isConnected)return;b.innerHTML=icon('check')+`<span class="compact-label">${t('copied')}</span>`;setTimeout(()=>{if(b.isConnected)b.innerHTML=icon('copy')+`<span class="compact-label">${t('copy')}</span>`;},1800);}finally{if(b.isConnected)b.disabled=false;}});
   bind($('[data-history]'),'click',async()=>{if(!opened.payload){const result=await unlockNote(n);if(!result)return;opened={note:n,...result};draw(result.payload);}await historyDialog(opened);});
   bind($('[data-lock]'),'click',async()=>{await Unlock.forget(n);clearKeys();await notePage();});bind($('[data-trash]'),'click',()=>actNotes([n.id],'trash'));bind($('[data-permanent-delete]'),'click',()=>actNotes([n.id],'delete'));bind($('[data-restore]'),'click',async()=>{await S.updateMeta(n.id,{trashedAt:null});await notePage();});
   bind($('[data-agent]'),'click',async()=>{if(!opened.payload){const result=await unlockNote(n);if(!result)return;opened={note:n,...result};draw(result.payload);}await CloudUI.agent(opened);});
