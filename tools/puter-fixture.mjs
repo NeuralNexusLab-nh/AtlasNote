@@ -10,8 +10,7 @@ export function fixture(){
   await context.exposeBinding('__puterCall',async(_,method,args)=>{
    calls.push({account,method,args});if(method==='getUser'){if(!identities++&&authDelay)await new Promise(r=>setTimeout(r,authDelay));if(failAuth)failure('cloudAuth');return {uuid:account,username:account===owner?'codex-test':'second-test',email_confirmed:true,is_temp:false};}
    if(method==='appsGet'){if(args[0]!=='AtlasNote')failure('not_found');return {uid:'test-atlasnote',name:'AtlasNote'};}
-   if(method==='permsCheck')return domainGranted;
-   if(method==='permsRequest'){if(domainRequestGrant)domainGranted=true;return domainRequestGrant;}
+   if(method==='permsCheck'||method==='permsRequest'){const scopes=args[1]?.scopes;if(args[0]!=='appData'||scopes?.fs!=='write'||!Array.isArray(scopes?.kv)||!scopes.kv.includes('get')||!scopes.kv.includes('set')||scopes.kv.includes('del'))failure('invalid_argument');if(method==='permsCheck')return domainGranted;if(domainRequestGrant)domainGranted=true;return domainRequestGrant;}
    if(method==='space')return spaceOverride??{capacity:25_000_000,used:[...files.values()].filter(f=>f.owner===account).reduce((n,f)=>n+Buffer.byteLength(f.text),0)+1_000_000};
    if(method==='monthly')return monthlyOverride??{allowanceInfo:{monthUsageAllowance:1000,remaining:830},usage:{},appTotals:{}};
    const [path,data,options]=args,key=account+':'+path;

@@ -32,7 +32,9 @@ async function prepareDomain(p,next,request=false){
   if(location.hostname.toLowerCase()===MAIN_HOST){activeRoot=ROOT;sharedAppId=null;sharedKV=null;return;}
   // Puter apps are looked up by their registered app name, not by their hosting domain.
   const target=await deadline(p.apps.get(MAIN_APP_NAME));if(!target?.uid)throw new Error('domainAppMissing');
-  const scopes={fs:'write',kv:'write'};
+  // Use Puter's documented per-store scope shape: files can be read/written;
+  // only this app's settings need KV get/set (not delete).
+  const scopes={fs:'write',kv:['get','set']};
   let granted=await deadline(p.perms.check('appData',{app:target.uid,scopes}));
   if(!granted){
     // Before consent, discard only this secondary app's old Puter namespace.
@@ -73,21 +75,26 @@ async function readBlob(id){if(!HASH.test(id))throw new Error('cloudInvalid');co
 async function pack(record){const r=structuredClone(record);if(r.attachments)r.attachments=await Promise.all(r.attachments.map(async a=>({id:a.id,hash:a.hash,blob:await blob(a.box)})));if(r.mode==='none'&&r.body.images)r.body.images=await Promise.all(r.body.images.map(async image=>({blob:await blob(image)})));return blob(r);}
 async function unpack(id){const r=await readBlob(id);if(!ID.test(r.id)||!['none','basic','secure'].includes(r.mode)||!Number.isFinite(Date.parse(r.updatedAt))||!Number.isFinite(Date.parse(r.createdAt)))throw new Error('cloudInvalid');if(r.attachments){if(!Array.isArray(r.attachments)||r.attachments.length>3)throw new Error('cloudInvalid');r.attachments=await Promise.all(r.attachments.map(async a=>({id:a.id,hash:a.hash,box:await readBlob(a.blob)})));}if(r.mode==='none'){if(!Array.isArray(r.body?.images)||r.body.images.length>3)throw new Error('cloudInvalid');r.body.images=await Promise.all(r.body.images.map(a=>readBlob(a.blob)));S.validatePayload(r.body);}else{if(C.unb64(r.body?.iv).length!==12||C.unb64(r.body?.data).length<16||C.unb64(r.titleBox?.iv).length!==12)throw new Error('cloudInvalid');if(r.mode==='secure'&&(C.unb64(r.salt).length!==16||C.unb64(r.wrap?.iv).length!==12))throw new Error('cloudInvalid');}return r;}
 async function list(path){try{return await (await sdk()).fs.readdir(path);}catch(e){if(missing(e))return [];throw e;}}
+async function mapLimit(items,limit,task){const output=new Array(items.length);let next=0;await Promise.all(Array.from({length:Math.min(limit,items.length)},async()=>{while(true){const index=next++;if(index>=items.length)return;output[index]=await task(items[index],index);}}));return output;}
 export async function sync(){
   if(syncTask)return syncTask;const ticket=session,owner=user?.uuid;
   syncTask=(async()=>{await authorize();notify('syncing');const run=async()=>{
     // Immutable change files are committed last. A failed upload cannot publish half a note.
     for(const change of await S.rawAll('outbox')){if(ticket!==session||!ready)throw new Error('cloudAuth');const commit={format:'AtlasNoteChange',version:1,id:change.id,noteId:change.noteId,parents:change.parents,deleted:change.deleted,at:change.at,snapshot:change.deleted?null:await pack(change.record)};if(ticket!==session||!ready)throw new Error('cloudAuth');const filePath=path('notes/'+change.noteId+'/'+change.id+'.json');try{await (await sdk()).fs.write(filePath,JSON.stringify(commit),{overwrite:false,createMissingParents:true});}catch(e){let existing;try{existing=await readJSON(filePath,6000);}catch{throw e;}if(JSON.stringify(existing)!==JSON.stringify(commit))throw new Error('cloudInvalid');}S.memoryDelete('outbox',change.id);S.memoryPut('changes',commit);}
-    for(const folder of await list(path('notes'))){if(!ID.test(folder.name)||!folder.is_dir)continue;const files=await list(path('notes/'+folder.name)),changes=[];
-      for(const file of files){const id=file.name?.replace(/\.json$/,'');if(!ID.test(id))continue;let c=await S.rawGet('changes',id);if(!c){c=await readJSON(path('notes/'+folder.name+'/'+file.name),6000);if(c.format!=='AtlasNoteChange'||c.version!==1||c.id!==id||c.noteId!==folder.name||!Array.isArray(c.parents)||c.parents.length>100||!c.parents.every(x=>ID.test(x))||typeof c.deleted!=='boolean'||(!c.deleted&&!HASH.test(c.snapshot))||!Number.isFinite(Date.parse(c.at)))throw new Error('cloudInvalid');S.memoryPut('changes',c);}changes.push(c);}
+    const folders=(await list(path('notes'))).filter(folder=>ID.test(folder.name)&&folder.is_dir),pendingIds=new Set((await S.rawAll('outbox')).map(change=>change.noteId));
+    // Bound remote fan-out to avoid the old serial latency without flooding Puter.
+    await mapLimit(folders,4,async folder=>{
+      const files=(await list(path('notes/'+folder.name))).filter(file=>ID.test(file.name?.replace(/\.json$/,''))),changes=await mapLimit(files,4,async file=>{
+        const id=file.name.replace(/\.json$/,'');let c=await S.rawGet('changes',id);if(!c){c=await readJSON(path('notes/'+folder.name+'/'+file.name),6000);if(c.format!=='AtlasNoteChange'||c.version!==1||c.id!==id||c.noteId!==folder.name||!Array.isArray(c.parents)||c.parents.length>100||!c.parents.every(x=>ID.test(x))||typeof c.deleted!=='boolean'||(!c.deleted&&!HASH.test(c.snapshot))||!Number.isFinite(Date.parse(c.at)))throw new Error('cloudInvalid');S.memoryPut('changes',c);}return c;
+      });
       const referenced=new Set(changes.flatMap(c=>c.parents)),heads=changes.filter(c=>!referenced.has(c.id));if(!heads.length&&changes.length)throw new Error('cloudInvalid');
-      const pending=(await S.rawAll('outbox')).some(c=>c.noteId===folder.name);if(pending)continue;const known=await S.rawGet('heads',folder.name);if(JSON.stringify([...known?.tips||[]].sort())===JSON.stringify(heads.map(c=>c.id).sort()))continue;
+      if(pendingIds.has(folder.name))return;const known=await S.rawGet('heads',folder.name);if(JSON.stringify([...known?.tips||[]].sort())===JSON.stringify(heads.map(c=>c.id).sort()))return;
       if(ticket!==session||owner!==user?.uuid)throw new Error('cloudAuth');
-      if(heads.length>1){S.memoryPut('heads',{id:folder.name,tips:heads.map(c=>c.id)});S.memoryPut('conflicts',{id:folder.name,heads});continue;}
-      const head=heads[0];if(!head)continue;const remote=head.deleted?null:await unpack(head.snapshot);if(remote&&remote.id!==folder.name)throw new Error('cloudInvalid');
-      if((await S.rawAll('outbox')).some(c=>c.noteId===folder.name))continue;
+      if(heads.length>1){S.memoryPut('heads',{id:folder.name,tips:heads.map(c=>c.id)});S.memoryPut('conflicts',{id:folder.name,heads});return;}
+      const head=heads[0];if(!head)return;const remote=head.deleted?null:await unpack(head.snapshot);if(remote&&remote.id!==folder.name)throw new Error('cloudInvalid');
+      if((await S.rawAll('outbox')).some(c=>c.noteId===folder.name))return;
       const n=await S.rawGet('notes',folder.name);if(remote)S.memoryPut('notes',{...remote,rev:(n?.rev||0)+1});else S.memoryDelete('notes',folder.name);S.memoryPut('heads',{id:folder.name,tips:[head.id]});S.memoryDelete('conflicts',folder.name);
-    }
+    });
     const conflicts=await S.rawAll('conflicts');notify(conflicts.length?'conflict':(await S.rawAll('outbox')).length?'pending':'synced');
   };return navigator.locks?await navigator.locks.request('atlas-cloud-sync-'+owner,run):await run();})().catch(e=>{notify(errorKey(e));throw e;}).finally(()=>{syncTask=null;if(ready)S.rawAll('outbox').then(items=>{if(items.length){clearTimeout(timer);timer=setTimeout(()=>sync().catch(()=>{}),state==='pending'?500:30000);}}).catch(()=>{});});return syncTask;
 }
