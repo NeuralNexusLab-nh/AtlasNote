@@ -1,7 +1,7 @@
 import {createRequire} from 'node:module';import assert from 'node:assert/strict';import fs from 'node:fs/promises';import os from 'node:os';import path from 'node:path';
 import {fixture} from './puter-fixture.mjs';
 const {chromium}=createRequire(import.meta.url)('C:/Users/eaton/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
-const browser=await chromium.launch({channel:'msedge',headless:true}),mock=fixture(),artifacts=await fs.mkdtemp(path.join(os.tmpdir(),'atlas-polish-')),base='http://127.0.0.1:4321';let checks=0;const errors=[],ok=(v,m)=>{assert.ok(v,m);checks++;};
+const browser=await chromium.launch({channel:'msedge',headless:true}),mock=fixture(),artifacts=await fs.mkdtemp(path.join(os.tmpdir(),'atlas-polish-')),base='https://atlasnote.nxlabtw.com';let checks=0;const errors=[],ok=(v,m)=>{assert.ok(v,m);checks++;};
 const context=await browser.newContext({locale:'en-US',viewport:{width:1440,height:900},serviceWorkers:'block'});await mock.attach(context,{authDelay:650});const p=await context.newPage();p.on('pageerror',e=>errors.push(e.message));
 try{
  await p.goto(base);await p.waitForSelector('.hero');await p.waitForSelector('[data-nav-signout]');await p.waitForFunction(()=>[...document.querySelectorAll('[data-home-primary]')].every(a=>a.textContent.includes('Open dashboard')));

@@ -5,20 +5,19 @@ const require=createRequire(import.meta.url),{chromium}=require('C:/Users/eaton/
 const browser=await chromium.launch({channel:'msedge',headless:true});let checks=0;const ok=(value,label)=>{assert.ok(value,label);checks++;};
 try{
  const mock=fixture(),context=await browser.newContext({locale:'en-US',serviceWorkers:'block'});await mock.attach(context);const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('http://127.0.0.1:4321/settings.html');await page.waitForSelector('.account-settings');
+ await page.goto('https://atlasnote.nxlabtw.com/settings.html');await page.waitForSelector('.account-settings');
  const legacy=await page.evaluate(async()=>{
   localStorage.setItem('atlasnote.device-root.v1','retired-key');localStorage.setItem('atlasnote.preferences','{"theme":"light"}');localStorage.setItem('unrelated-site-key','keep');sessionStorage.setItem('unrelated-session-key','keep');
   const db=await new Promise((resolve,reject)=>{const q=indexedDB.open('atlasnote-v1',1);q.onupgradeneeded=()=>q.result.createObjectStore('notes',{keyPath:'id'});q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error);});db.close();
   return {dbs:(await indexedDB.databases()).map(x=>x.name),keys:Object.keys(localStorage)};
  });
- const ownKey='11111111-1111-4111-8111-111111111111:',secondaryPath='/codex-test/AppData/test-secondary-127-0-0-1/atlasnote-v1/old.json',mainPath='/codex-test/AppData/test-atlasnote/atlasnote-v1/keep.json';
- mock.files.set(ownKey+secondaryPath,{owner:'11111111-1111-4111-8111-111111111111',path:secondaryPath,text:'secondary old Puter data'});
+ const ownKey='11111111-1111-4111-8111-111111111111:',mainPath='/codex-test/AppData/test-atlasnote/atlasnote-v1/keep.json';
  mock.files.set(ownKey+mainPath,{owner:'11111111-1111-4111-8111-111111111111',path:mainPath,text:'main Puter data'});
  await page.reload();await page.waitForSelector('.account-settings');
  const cleanup=await page.evaluate(async()=>({dbs:(await indexedDB.databases()).map(x=>x.name),oldKey:localStorage.getItem('atlasnote.device-root.v1'),oldPrefs:localStorage.getItem('atlasnote.preferences'),other:localStorage.getItem('unrelated-site-key'),session:sessionStorage.getItem('unrelated-session-key')}));
  ok(!cleanup.dbs.some(name=>/^atlasnote-(?:cloud-|locked|v1)/.test(name))&&!cleanup.oldKey&&!cleanup.oldPrefs,'Legacy AtlasNote browser data is removed on startup');
  ok(cleanup.other==='keep'&&cleanup.session==='keep','Unrelated browser data and session data are untouched');
- ok(mock.files.has(ownKey+secondaryPath)&&mock.files.has(ownKey+mainPath),'Authorized reconnect preserves both app namespaces; first-time secondary cleanup is tested separately');
+ ok(mock.files.has(ownKey+mainPath),'The main AtlasNote Puter namespace remains intact');
  ok(!await page.locator('dialog,[data-migrate],[data-legacy-clear]').count(),'Cleanup is automatic and never uploads or prompts to migrate legacy data');
  const saved=await page.evaluate(async()=>{
   const S=await import('/script/store.js'),Cloud=await import('/script/cloud.js');
@@ -40,7 +39,7 @@ try{
  });
  ok(blocked.reported&&blocked.finished,'Cleanup detects a blocked old database deletion and completes after the connection is released');
  // The same cleanup runs for signed-out visits and never reconstructs an offline note store.
- const signedOut=await browser.newContext({serviceWorkers:'block'});await mock.attach(signedOut,{signedIn:false});const anonymous=await signedOut.newPage();await anonymous.goto('http://127.0.0.1:4321/');
+ const signedOut=await browser.newContext({serviceWorkers:'block'});await mock.attach(signedOut,{signedIn:false});const anonymous=await signedOut.newPage();await anonymous.goto('https://atlasnote.nxlabtw.com/');
  await anonymous.evaluate(async()=>{localStorage.setItem('atlasnote.device-root.v1','retired');const q=indexedDB.open('atlasnote-v1',1);await new Promise((resolve,reject)=>{q.onupgradeneeded=()=>q.result.createObjectStore('notes',{keyPath:'id'});q.onsuccess=()=>{q.result.close();resolve();};q.onerror=()=>reject(q.error);});});
  await anonymous.reload();await anonymous.waitForFunction(async()=>!(await indexedDB.databases()).some(d=>d.name==='atlasnote-v1')&&!localStorage.getItem('atlasnote.device-root.v1'));
  ok(!await anonymous.locator('dialog').count(),'Signed-out visitors get cleanup without a prompt');

@@ -2,7 +2,7 @@ import {createRequire} from 'node:module';import assert from 'node:assert/strict
 import {fixture} from './puter-fixture.mjs';
 const require=createRequire(import.meta.url),{chromium}=require('C:/Users/eaton/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 const browser=await chromium.launch({channel:'msedge',headless:true}),context=await browser.newContext({viewport:{width:390,height:844},acceptDownloads:true}),page=await context.newPage();
-const base='http://127.0.0.1:4321',artifacts=await fs.mkdtemp(path.join(os.tmpdir(),'atlasnote-interactions-'));let count=0;const errors=[],csp=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',e=>{if(e.text().includes('Content Security Policy')||e.text().includes('violates the following'))csp.push(e.text());});
+const base='https://atlasnote.nxlabtw.com',artifacts=await fs.mkdtemp(path.join(os.tmpdir(),'atlasnote-interactions-'));let count=0;const errors=[],csp=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',e=>{if(e.text().includes('Content Security Policy')||e.text().includes('violates the following'))csp.push(e.text());});
 await fixture().attach(context);
 const ok=(v,m)=>{assert.ok(v,m);count++;};
 try{

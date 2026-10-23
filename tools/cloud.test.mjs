@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';import os from 'node:os';import path from 'node:path';
 import {fixture} from './puter-fixture.mjs';
 const require=createRequire(import.meta.url),{chromium}=require('C:/Users/eaton/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
-const browser=await chromium.launch({channel:'msedge',headless:true}),mock=fixture(),base='http://127.0.0.1:4321';
+const browser=await chromium.launch({channel:'msedge',headless:true}),mock=fixture(),base='https://atlasnote.nxlabtw.com';
 const artifacts=await fs.mkdtemp(path.join(os.tmpdir(),'atlas-cloud-'));let checks=0;const errors=[];const ok=(v,m)=>{assert.ok(v,m);checks++;};
 async function context(options={}){const c=await browser.newContext({locale:'en-US',viewport:{width:1440,height:900},serviceWorkers:'block',acceptDownloads:true});await mock.attach(c,options);const p=await c.newPage();p.on('pageerror',e=>errors.push(e.message));return {c,p};}
 try{

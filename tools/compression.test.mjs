@@ -5,7 +5,7 @@ const browser=await chromium.launch({channel:'msedge',headless:true}),context=aw
 const errors=[];page.on('pageerror',e=>errors.push(e.message));
 await fixture().attach(context);
 try{
- await page.goto('http://127.0.0.1:4321/edit.html');await page.waitForSelector('#editor-form');await page.locator('#note-title').fill('Synthetic compression comparison');
+ await page.goto('https://atlasnote.nxlabtw.com/edit.html');await page.waitForSelector('#editor-form');await page.locator('#note-title').fill('Synthetic compression comparison');
  await page.locator('[data-compression=clear]').click();
  const source=await page.evaluate(async()=>{
   const c=document.createElement('canvas');c.width=2400;c.height=1600;const x=c.getContext('2d'),g=x.createLinearGradient(0,0,2400,1600);g.addColorStop(0,'#e7dcf3');g.addColorStop(.5,'#8294c5');g.addColorStop(1,'#33467c');x.fillStyle=g;x.fillRect(0,0,2400,1600);

@@ -1,7 +1,7 @@
 import {createRequire} from 'node:module';import assert from 'node:assert/strict';import fs from 'node:fs/promises';import os from 'node:os';import path from 'node:path';
 const require=createRequire(import.meta.url),{chromium}=require('C:/Users/eaton/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 const browser=await chromium.launch({channel:'msedge',headless:true}),context=await browser.newContext({viewport:{width:1440,height:900}}),page=await context.newPage();
-const root='http://127.0.0.1:4321',artifacts=await fs.mkdtemp(path.join(os.tmpdir(),'atlas-install-'));let count=0;const errors=[];page.on('pageerror',e=>errors.push(e.message));const ok=(v,m)=>{assert.ok(v,m);count++;};
+const root='https://atlasnote.nxlabtw.com',artifacts=await fs.mkdtemp(path.join(os.tmpdir(),'atlas-install-'));let count=0;const errors=[];page.on('pageerror',e=>errors.push(e.message));const ok=(v,m)=>{assert.ok(v,m);count++;};
 const sizes=[[1440,900],[1024,768],[768,1024],[430,932],[390,844],[360,740],[320,568],[844,390]];
 try{
  await page.goto(root);await page.waitForSelector('.hero');await page.selectOption('#language','en');await page.waitForTimeout(1800);

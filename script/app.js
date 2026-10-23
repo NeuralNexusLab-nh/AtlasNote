@@ -10,6 +10,7 @@ import * as CloudUI from './cloud-ui.js';
 import * as Unlock from './unlock-cache.js';
 import {homeDetails} from './home-content.js';
 import {clearLegacy} from './legacy-storage.js';
+import {isMainSite} from './site-origin.js';
 
 const $=(s,root=document)=>root.querySelector(s),$$=(s,root=document)=>[...root.querySelectorAll(s)];
 export const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -18,7 +19,7 @@ const button=(label,ico,attrs='',cls='')=>`<button type="button" class="button $
 const iconButton=(label,ico,attrs='',cls='')=>`<button type="button" class="icon-btn ${cls}" title="${t(label)}" aria-label="${t(label)}" ${attrs}>${icon(ico)}</button>`;
 const linkButton=(label,ico,url,cls='')=>`<a href="${url}" class="button ${cls}" aria-label="${escape(t(label))}">${icon(ico)}<span class="compact-label">${t(label)}</span></a>`;
 const main=$('#main');
-let prefs=S.preferences(),currentPage='',renderId=0,allNotes=[],selection=new Set(),query='',filter='all',filterOpen=false,editorDirty=false,previewing=false,opened=null,editor=null,pausedDraft=null;
+let prefs=S.preferences(),currentPage='',renderId=0,allNotes=[],selection=new Set(),query='',filter='all',filterOpen=false,editorDirty=false,previewing=false,opened=null,editor=null,pausedDraft=null,cloudBoot=Promise.resolve(null);
 setLanguage(prefs.language||preferredLanguage());
 const md=window.markdownit({html:false,linkify:true,typographer:false});
 // Never load Markdown-supplied remote images. Only validated local attachments render.
@@ -58,7 +59,7 @@ function chrome(){
   const nav=(Cloud.signedIn()?[['home','house','/'],['dashboard','table-columns','/dashboard.html'],['notes','book-open','/notes.html'],['trash','trash-can','/trash.html'],['docs','book','/docs.html'],['settings','sliders','/settings.html']]:[['home','house','/'],['docs','book','/docs.html']]);
   $('#navbar').innerHTML=`<a class="brand" href="/" aria-label="AtlasNote"><img src="/asset/logo.svg" alt="" width="31" height="31"><span>AtlasNote</span></a><nav class="nav-links" aria-label="${t('home')}">${nav.map(([key,ico,url])=>`<a class="nav-link ${currentPage===key||key==='notes'&&['note','edit'].includes(currentPage)?'active':''}" href="${url}" ${currentPage===key?'aria-current="page"':''}>${icon(ico)}<span>${t(key)}</span></a>`).join('')}</nav><div class="nav-actions"><select class="language-select" aria-label="${t('language')}" id="language"><option value="en">English</option><option value="zh-Hant">繁體中文</option><option value="ja">日本語</option><option value="leet">l33t</option></select>${Cloud.signedIn()?button('logout','right-from-bracket','data-nav-signout','nav-auth'):linkButton('login','right-to-bracket','/dashboard.html','primary nav-auth')}${iconButton('filter','bars','data-menu aria-expanded="false"','mobile-toggle')}</div>`;
   $('#language').value=getLanguage();
-  const syncBadge=document.createElement('button');syncBadge.type='button';syncBadge.className='sync-badge';syncBadge.dataset.cloudStatus='';syncBadge.hidden=!Cloud.signedIn();$('.nav-actions').prepend(syncBadge);updateCloudStatus();bind(syncBadge,'click',async()=>{if(!Cloud.profile()){location.href='/dashboard.html';return;}if(Cloud.status()==='conflict')return CloudUI.conflictManager();await Cloud.sync();updateCloudStatus();});
+  const syncBadge=document.createElement('button');syncBadge.type='button';syncBadge.className='sync-badge';syncBadge.dataset.cloudStatus='';syncBadge.hidden=!Cloud.signedIn();$('.nav-actions').prepend(syncBadge);updateCloudStatus();bind(syncBadge,'click',async()=>{if(!Cloud.profile()){location.href='/dashboard.html';return;}if(Cloud.status()==='conflict')return CloudUI.conflictManager();await Cloud.sync();if(['dashboard','notes','trash','note'].includes(currentPage)&&!editorDirty)await render();else updateCloudStatus();});
   bind($('#language'),'change',async e=>{if(editorDirty&&!await dialog({title:t('discard'),body:`<p>${t('discardWarning')}</p>`,confirm:'discard',cancel:true})){e.target.value=getLanguage();return;}editorDirty=false;prefs={...prefs,language:e.target.value};if(Cloud.signedIn())await Cloud.savePreferences(prefs);else S.savePreferences(prefs);setLanguage(prefs.language);await render();});
 
   bind($('[data-nav-signout]'),'click',signOut);
@@ -179,12 +180,13 @@ async function editPage(){
   $$('[data-compression]').forEach(b=>{b.title=t(b.dataset.compression+'Hint');b.setAttribute('aria-label',t(b.dataset.compression)+': '+b.title);b.setAttribute('aria-pressed',String(b.classList.contains('active')));bind(b,'click',()=>changeCompression(b.dataset.compression));});
   bind($('[data-discard]'),'click',async()=>{if(!editorDirty||await dialog({title:t('discard'),body:`<p>${t('discardWarning')}</p>`,confirm:'discard',cancel:true})){editorDirty=false;location.href=id?noteURL(id):'/notes.html';}});
   bind($('#editor-form'),'submit',async e=>{
-    e.preventDefault();if($('#save-note').disabled)return;const btn=$('#save-note');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';
+    e.preventDefault();if($('#save-note').disabled)return;const btn=$('#save-note'),form=$('#editor-form');form.inert=true;form.setAttribute('aria-busy','true');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';
     try{
       if(!editor.payload.title.trim())throw new Error('limitError');
       if(!id&&editor.note.mode==='secure'){const vault=await C.createVault(editor.note.id,$('#new-pin-value').value);editor.key=vault.key;editor.note.salt=vault.salt;editor.note.wrap=vault.wrap;}
       editor.note=await S.saveNote(editor.note,editor.payload,editor.key,editor.previous);if(editor.key)await Unlock.remember(editor.note,editor.key);editorDirty=false;location.href=noteURL(editor.note.id);
-    }finally{btn.innerHTML=icon('check')+`<span class="compact-label">${t('save')}</span>`;btn.disabled=false;}
+    }catch(error){const pending=await S.rawGet('notes',editor.note.id);if(pending&&S.hasPending(editor.note.id)){editor.note=pending;editor.previous=structuredClone(editor.payload);}throw error;}
+    finally{form.inert=false;form.removeAttribute('aria-busy');btn.innerHTML=icon('check')+`<span class="compact-label">${t('save')}</span>`;btn.disabled=false;}
   });
   bind($('[data-add-images]'),'click',()=>$('#image-files').click());bind($('#image-files'),'change',async e=>{await addImages([...e.target.files]);e.target.value='';update();});
   bind($('#dropzone'),'dragover',e=>{e.preventDefault();$('#dropzone').classList.add('dragging');});bind($('#dropzone'),'dragleave',()=>$('#dropzone').classList.remove('dragging'));
@@ -267,9 +269,11 @@ function docsPage(kind='docs'){
   document.title=`${content.title} — AtlasNote`;
 }
 async function install(){return requestInstall();}
-window.addEventListener('beforeunload',e=>{if(editorDirty){e.preventDefault();e.returnValue='';}});
+window.addEventListener('beforeunload',e=>{if(editorDirty||S.hasPending()){e.preventDefault();e.returnValue='';}});
 document.addEventListener('click',async e=>{
-  const a=e.target.closest('a[href]');if(!a||!editorDirty||a.getAttribute('href').startsWith('#'))return;e.preventDefault();if(await dialog({title:t('discard'),body:`<p>${t('discardWarning')}</p>`,confirm:'discard',cancel:true})){editorDirty=false;location.href=a.href;}
+  const a=e.target.closest('a[href]');if(!a||(!editorDirty&&!S.hasPending())||a.getAttribute('href').startsWith('#'))return;e.preventDefault();
+  if(S.hasPending()){try{await Cloud.sync();if(S.hasPending())throw new Error('cloudPending');}catch(error){await fail(error);return;}}
+  if(!editorDirty||await dialog({title:t('discard'),body:`<p>${t('discardWarning')}</p>`,confirm:'discard',cancel:true})){editorDirty=false;location.href=a.href;}
 });
 async function render(){
   const token=++renderId;document.body.dataset.page=route();if(!$('#global-stars')){const stars=document.createElement('canvas');stars.id='global-stars';stars.className='starfield';stars.setAttribute('aria-hidden','true');document.body.prepend(stars);startMeteors(stars);}clearKeys();currentPage=route();chrome();document.title=currentPage==='home'?`AtlasNote — ${t('tagline')}`:`${t(currentPage==='edit'?'newNote':currentPage)} — AtlasNote`;
@@ -285,12 +289,20 @@ async function render(){
   }catch(error){if(token!==renderId)return;main.innerHTML=`<div class="empty">${icon('triangle-exclamation')}<h1>${t('error')}</h1><p>${t(['notFound','missingKey','storageError','storageFull','storageDisabled'].includes(error.message)?error.message:'unexpectedError')}</p>${linkButton('notes','arrow-left','/notes.html')}</div>`;console.error('[AtlasNote]',error.message);}
 }
 CloudUI.configureUI({icon,button,linkButton,escape,size,bind,dialog,alertMessage,prose,render,askPIN,signOut});
-function updateCloudStatus(){const badge=$('[data-cloud-status]');if(!badge)return;const state=Cloud.status(),key=['synced','syncing','pending','connecting','signedOut','offline'].includes(state)?state:state==='conflict'?'resolve':'cloudError';badge.innerHTML=icon(state==='synced'?'cloud':state==='conflict'?'triangle-exclamation':state==='signedOut'?'right-to-bracket':'rotate')+`<span>${escape(t(key))}</span>`;badge.setAttribute('aria-label',t(key));badge.title=t(state.startsWith('cloud')?state:key);badge.dataset.state=state;}
+function updateCloudStatus(){const badge=$('[data-cloud-status]');if(!badge)return;const state=Cloud.status(),key=['synced','syncing','pending','connecting','signedOut','offline'].includes(state)?state:state==='conflict'?'resolve':'syncPaused';badge.innerHTML=icon(state==='synced'?'cloud':state==='conflict'?'triangle-exclamation':state==='signedOut'?'right-to-bracket':'rotate')+`<span>${escape(t(key))}</span>`;badge.setAttribute('aria-label',t(key));badge.title=t(state.startsWith('cloud')?state:key);badge.dataset.state=state;}
 window.addEventListener('atlas-cloud',()=>{if($('.nav-link').length!==(Cloud.signedIn()?6:2))chrome();else updateCloudStatus();updateHomeActions();});
-window.addEventListener('atlas-preferences',event=>{prefs={...prefs,...event.detail};setLanguage(prefs.language||preferredLanguage());document.documentElement.dataset.theme=prefs.theme;});
+window.addEventListener('atlas-preferences',event=>{const previousLanguage=getLanguage();prefs={...prefs,...event.detail};setLanguage(prefs.language||preferredLanguage());document.documentElement.dataset.theme=prefs.theme;if(currentPage){chrome();document.title=currentPage==='home'?`AtlasNote — ${t('tagline')}`:`${t(currentPage==='edit'?'newNote':currentPage)} — AtlasNote`;if(previousLanguage!==getLanguage()&&['home','docs','privacy','terms'].includes(currentPage))void render();}});
 window.addEventListener('atlas-access-lost',()=>{if(['dashboard','notes','trash','note','edit','settings'].includes(currentPage)){if(editor&&editorDirty){pausedDraft={owner:Cloud.profile()?.uuid,note:structuredClone(editor.note),payload:structuredClone(editor.payload),key:editor.key?new Uint8Array(editor.key):null};}clearKeys();document.querySelectorAll('dialog').forEach(d=>{d.dispatchEvent(new Event('atlas-dismiss'));if(d.isConnected){d.close();d.remove();}});CloudUI.loginGate();}});
+if(!isMainSite()){
+  document.title='AtlasNote';
+  $('#navbar').innerHTML='<a class="brand" href="https://atlasnote.nxlabtw.com/"><img src="/asset/logo.svg" alt="" width="31" height="31"><span>AtlasNote</span></a>';
+  $('#main').innerHTML=`<section class="card empty main-site-gate"><p class="eyebrow">AtlasNote</p><h1>${t('mainSiteOnly')}</h1><a class="button primary" href="https://atlasnote.nxlabtw.com/">${t('home')}</a></section>`;
+  $('#footer').innerHTML='<p>AtlasNote · NXLabTW</p>';
+  document.documentElement.dataset.theme='dark';
+}else{
 // Retire pre-Puter notes and their key, even when signed out. Never touch cloud caches.
 const cleanupBoot=clearLegacy({onBlocked:()=>alertMessage(t('legacyBusy'))}).then(()=>S.reset());
-const cloudBoot=cleanupBoot.then(()=>Cloud.boot()).then(async p=>{if(p){try{const saved=await Cloud.preferences();if(saved){prefs={...prefs,...saved};setLanguage(prefs.language||preferredLanguage());document.documentElement.dataset.theme=prefs.theme;}}catch{}}return p;});
+cloudBoot=cleanupBoot.then(()=>Cloud.boot());
 await render();
 if('serviceWorker' in navigator)navigator.serviceWorker.getRegistrations().then(registrations=>Promise.all(registrations.filter(r=>new URL(r.scope).origin===location.origin&&new URL(r.active?.scriptURL||r.installing?.scriptURL||r.waiting?.scriptURL||'/sw.js').pathname==='/sw.js').map(r=>r.unregister()))).catch(()=>{});
+}

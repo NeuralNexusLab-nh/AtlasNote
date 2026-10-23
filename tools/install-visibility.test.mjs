@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {fixture} from './puter-fixture.mjs';
 const {chromium}=createRequire(import.meta.url)('C:/Users/eaton/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
-const browser=await chromium.launch({channel:'msedge',headless:true}),mock=fixture(),base='http://127.0.0.1:4321';
+const browser=await chromium.launch({channel:'msedge',headless:true}),mock=fixture(),base='https://atlasnote.nxlabtw.com';
 const artifacts=await fs.mkdtemp(path.join(os.tmpdir(),'atlas-install-visibility-'));let checks=0;
 const ok=(value,label)=>{assert.ok(value,label);checks++;};
 try{

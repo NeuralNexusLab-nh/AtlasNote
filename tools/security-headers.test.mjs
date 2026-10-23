@@ -38,14 +38,14 @@ const require=createRequire(import.meta.url);
 const {chromium}=require('C:/Users/eaton/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 const browser=await chromium.launch({channel:'msedge',headless:true});
 try{
- for(const host of ['first.example.test','second.example.test']){
+ for(const host of ['atlasnote.nxlabtw.com']){
   const context=await browser.newContext({serviceWorkers:'block',locale:'en-US'}),mock=fixture();
   await mock.attach(context);
   const requests=[];
   await context.route('https://'+host+'/**',async route=>{
    const url=new URL(route.request().url()),response=await fetch(base+url.pathname+url.search);
    const headers=Object.fromEntries(response.headers);delete headers['content-length'];
-   // Fulfill the real production policy at an arbitrary secure origin without using a real account or DNS.
+   // Fulfill the production policy at the canonical host without using a real account or DNS.
    Object.assign(headers,policy);
    await route.fulfill({status:response.status,headers,body:Buffer.from(await response.arrayBuffer())});
   });
@@ -85,5 +85,5 @@ try{
   assert.equal(await attacker.locator('iframe').contentFrame().locator('.site-header').count().catch(()=>0),0);
   await context.close();
  }
- console.log('Security headers: host parity, responses, two arbitrary HTTPS origins, real Argon/AES, blocked scripts/connections/base/frame — passed.');
+ console.log('Security headers: policy parity, canonical-host responses, real Argon/AES, blocked scripts/connections/base/frame — passed.');
 }finally{await browser.close();}

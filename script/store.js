@@ -1,10 +1,11 @@
 import * as C from './crypto.js';
 const tables=Object.fromEntries(['notes','outbox','heads','conflicts','changes'].map(name=>[name,new Map()]));
-let backend=null, prefs={theme:'dark',language:null,history:3,trashDays:7};
+let backend=null,accountId=null, prefs={theme:'dark',language:null,history:3,trashDays:7};
 function clearMemory(){for(const table of Object.values(tables))table.clear();}
-export function reset(){clearMemory();}
-export function configureAccount(id,adapter){if(!/^[a-zA-Z0-9-]{1,100}$/.test(id))throw new Error('cloudAuth');clearMemory();backend=adapter;}
-export function detachAccount(){clearMemory();backend=null;C.useAccountKey(null);}
+export function reset(){clearMemory();backend=null;accountId=null;}
+export function configureAccount(id,adapter){if(!/^[a-zA-Z0-9-]{1,100}$/.test(id))throw new Error('cloudAuth');if(accountId!==id)clearMemory();accountId=id;backend=adapter;}
+export function detachAccount(){clearMemory();backend=null;accountId=null;C.useAccountKey(null);}
+export const hasPending=id=>id?[...tables.outbox.values()].some(change=>change.noteId===id):tables.outbox.size>0;
 export const memoryPut=(name,value)=>{if(!tables[name]||!value||typeof value.id!=='string')throw new Error('invalidData');tables[name].set(value.id,structuredClone(value));};
 export const memoryDelete=(name,id)=>tables[name]?.delete(id);
 async function authorize(){if(backend)await backend.authorize();}
@@ -20,8 +21,9 @@ export async function put(record,expected=0){
   const current=await rawGet('notes',record.id);if((current?.rev||0)!==expected)throw new Error('conflict');
   if(await rawGet('conflicts',record.id))throw new Error('conflict');
   const change=await backend.prepare(record),head=await rawGet('heads',record.id);change.parents=head?.tips||[];
+  if(((await rawGet('notes',record.id))?.rev||0)!==expected)throw new Error('conflict');
   const saved={...structuredClone(record),rev:expected+1};memoryPut('notes',saved);memoryPut('outbox',change);memoryPut('heads',{id:record.id,tips:[change.id]});
-  await backend.changed();return saved;
+  await backend.changed(change.id);return saved;
 }
 export async function remove(id,expected){await authorize();if(backend)return backend.remove(id,expected);throw new Error('cloudAuth');}
 export async function updateMeta(id,change){const note=await get(id);if(!note)throw new Error('notFound');return put({...note,...change},note.rev);}

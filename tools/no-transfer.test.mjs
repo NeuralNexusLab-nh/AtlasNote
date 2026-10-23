@@ -8,7 +8,7 @@ import {fixture} from './puter-fixture.mjs';
 const {chromium}=createRequire(import.meta.url)('C:/Users/eaton/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 const browser=await chromium.launch({channel:'msedge',headless:true}),mock=fixture();
 const context=await browser.newContext({locale:'en-US',serviceWorkers:'block'});await mock.attach(context);
-const page=await context.newPage(),errors=[],base='http://127.0.0.1:4321';page.on('pageerror',e=>errors.push(e.message));
+const page=await context.newPage(),errors=[],base='https://atlasnote.nxlabtw.com';page.on('pageerror',e=>errors.push(e.message));
 const artifacts=await fs.mkdtemp(path.join(os.tmpdir(),'atlas-no-transfer-'));let checks=0;
 const ok=(v,m)=>{assert.ok(v,m);checks++;};
 const transferControls='[data-import],[data-export],[data-backup],[data-conflict-export],#backup-note,.settings-data-tools';
