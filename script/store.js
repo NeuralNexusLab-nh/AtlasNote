@@ -1,34 +1,33 @@
 import * as C from './crypto.js';
-let DB='atlasnote-locked',dbPromise,backend={authorize:async()=>{throw new Error('cloudAuth');}};
-export function configureAccount(id,adapter){if(!/^[a-zA-Z0-9-]{1,100}$/.test(id))throw new Error('cloudAuth');DB='atlasnote-cloud-'+id;dbPromise=null;backend=adapter;}
-export function detachAccount(){backend={authorize:async()=>{throw new Error('cloudAuth');}};dbPromise=null;DB='atlasnote-locked';C.useAccountKey(null);}
+const tables=Object.fromEntries(['notes','outbox','heads','conflicts','changes'].map(name=>[name,new Map()]));
+let backend=null, prefs={theme:'dark',language:null,history:3,trashDays:7};
+function clearMemory(){for(const table of Object.values(tables))table.clear();}
+export function reset(){clearMemory();}
+export function configureAccount(id,adapter){if(!/^[a-zA-Z0-9-]{1,100}$/.test(id))throw new Error('cloudAuth');clearMemory();backend=adapter;}
+export function detachAccount(){clearMemory();backend=null;C.useAccountKey(null);}
+export const memoryPut=(name,value)=>{if(!tables[name]||!value||typeof value.id!=='string')throw new Error('invalidData');tables[name].set(value.id,structuredClone(value));};
+export const memoryDelete=(name,id)=>tables[name]?.delete(id);
 async function authorize(){if(backend)await backend.authorize();}
-function storageFailure(error){return new Error(error?.name==='QuotaExceededError'?'storageFull':['SecurityError','NotAllowedError'].includes(error?.name)?'storageDisabled':'storageError',{cause:error});}
 export const LIMITS={text:1_000_000,images:3,image:16_000_000,sourceImage:100_000_000,dimension:8192,pixels:67_108_864};
 export const uuid=()=>crypto.randomUUID();
 export const bytes=value=>new TextEncoder().encode(JSON.stringify(value)).length;
-export function database(){
-  if(!dbPromise)dbPromise=new Promise((resolve,reject)=>{const req=indexedDB.open(DB,3);req.onupgradeneeded=()=>{for(const name of ['notes','outbox','heads','conflicts','changes'])if(!req.result.objectStoreNames.contains(name))req.result.createObjectStore(name,{keyPath:'id'});};req.onsuccess=()=>{req.result.onversionchange=()=>{req.result.close();dbPromise=null;};resolve(req.result);};req.onerror=()=>{dbPromise=null;reject(storageFailure(req.error));};req.onblocked=()=>reject(new Error('storageBlocked'));});
-  return dbPromise;
-}
 export async function all(){await authorize();return rawAll('notes');}
 export async function get(id){await authorize();return rawGet('notes',id);}
-export async function rawAll(name){const db=await database();return new Promise((resolve,reject)=>{const req=db.transaction(name).objectStore(name).getAll();req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(storageFailure(req.error));});}
-export async function rawGet(name,id){const db=await database();return new Promise((resolve,reject)=>{const req=db.transaction(name).objectStore(name).get(id);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(storageFailure(req.error));});}
-export async function atomic(stores,fn){const db=await database();return new Promise((resolve,reject)=>{const tx=db.transaction(stores,'readwrite');fn(tx);tx.oncomplete=resolve;tx.onabort=()=>reject(storageFailure(tx.error));tx.onerror=()=>{};});}
+export async function rawAll(name){if(!tables[name])throw new Error('invalidData');return [...tables[name].values()].map(value=>structuredClone(value));}
+export async function rawGet(name,id){if(!tables[name])throw new Error('invalidData');const value=tables[name].get(id);return value?structuredClone(value):undefined;}
 export async function put(record,expected=0){
-  await authorize();const change=backend?await backend.prepare(record):null;
-  const db=await database();return new Promise((resolve,reject)=>{
-    const tx=db.transaction(change?['notes','outbox','heads','conflicts']:['notes'],'readwrite'),store=tx.objectStore('notes');let conflict=false;
-    const req=store.get(record.id);req.onsuccess=()=>{if((req.result?.rev||0)!==expected){conflict=true;tx.abort();return;}const save=()=>{store.put({...record,rev:expected+1});if(change){tx.objectStore('outbox').put(change);tx.objectStore('heads').put({id:record.id,tips:[change.id]});}};if(change){const c=tx.objectStore('conflicts').get(record.id);c.onsuccess=()=>{if(c.result){conflict=true;tx.abort();}else{const h=tx.objectStore('heads').get(record.id);h.onsuccess=()=>{change.parents=h.result?.tips||[];save();};}};}else save();};
-    tx.oncomplete=()=>{backend?.changed();resolve({...record,rev:expected+1});};tx.onabort=()=>reject(conflict?new Error('conflict'):storageFailure(tx.error));tx.onerror=()=>{};
-  });
+  await authorize();if(!backend)throw new Error('cloudAuth');
+  const current=await rawGet('notes',record.id);if((current?.rev||0)!==expected)throw new Error('conflict');
+  if(await rawGet('conflicts',record.id))throw new Error('conflict');
+  const change=await backend.prepare(record),head=await rawGet('heads',record.id);change.parents=head?.tips||[];
+  const saved={...structuredClone(record),rev:expected+1};memoryPut('notes',saved);memoryPut('outbox',change);memoryPut('heads',{id:record.id,tips:[change.id]});
+  await backend.changed();return saved;
 }
-export async function remove(id,expected){await authorize();if(backend)return backend.remove(id,expected);const db=await database();return new Promise((resolve,reject)=>{let conflict=false;const tx=db.transaction('notes','readwrite'),store=tx.objectStore('notes');const req=store.get(id);req.onsuccess=()=>{if(!req.result||req.result.rev!==expected){conflict=true;tx.abort();return;}store.delete(id);};tx.oncomplete=resolve;tx.onabort=()=>reject(conflict?new Error('conflict'):storageFailure(tx.error));tx.onerror=()=>{};});}
+export async function remove(id,expected){await authorize();if(backend)return backend.remove(id,expected);throw new Error('cloudAuth');}
 export async function updateMeta(id,change){const note=await get(id);if(!note)throw new Error('notFound');return put({...note,...change},note.rev);}
 export async function cleanup(){for(const n of await all())if(n.trashedAt&&Date.parse(n.trashedAt)+n.trashDays*86400000<Date.now())await remove(n.id,n.rev).catch(()=>{});}
-export function preferences(){try{const p=JSON.parse(localStorage.getItem('atlasnote.preferences')||'{}');return {theme:p.theme==='light'?'light':'dark',language:['en','zh-Hant','ja','leet'].includes(p.language)?p.language:null,history:[0,1,3,5,10,20].includes(p.history)?p.history:3,trashDays:[1,3,7,14,30].includes(p.trashDays)?p.trashDays:7};}catch{return {theme:'dark',language:null,history:3,trashDays:7};}}
-export function savePreferences(p){localStorage.setItem('atlasnote.preferences',JSON.stringify(p));}
+export function preferences(){return {...prefs};}
+export function savePreferences(p){prefs={theme:p.theme==='light'?'light':'dark',language:['en','zh-Hant','ja','leet'].includes(p.language)?p.language:null,history:[0,1,3,5,10,20].includes(p.history)?p.history:3,trashDays:[1,3,7,14,30].includes(p.trashDays)?p.trashDays:7};return {...prefs};}
 export function patch(current,previous){let a=0,b=0;while(a<current.length&&a<previous.length&&current[a]===previous[a])a++;while(b<current.length-a&&b<previous.length-a&&current[current.length-b-1]===previous[previous.length-b-1])b++;return [a,current.length-a-b,previous.slice(a,previous.length-b)];}
 export function apply(text,p){if(!Array.isArray(p)||p.length!==3||!Number.isInteger(p[0])||!Number.isInteger(p[1])||p[0]<0||p[1]<0||p[0]+p[1]>text.length||typeof p[2]!=='string'||p[2].length>LIMITS.text)throw new Error('invalidData');const result=text.slice(0,p[0])+p[2]+text.slice(p[0]+p[1]);if(result.length>LIMITS.text)throw new Error('invalidData');return result;}
 export function validatePayload(p){

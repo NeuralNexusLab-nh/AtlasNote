@@ -13,7 +13,6 @@ try{
  for(const mode of ['not-installed','installed-tab','standalone']){
   const context=await browser.newContext({serviceWorkers:'block'});await mock.attach(context);
   await context.addInitScript(mode=>{
-   if(mode==='installed-tab')localStorage.setItem('atlasnote.app-installed','true');
    if(mode==='standalone'){
     const original=window.matchMedia.bind(window);
     window.matchMedia=query=>{const result=original(query);if(query==='(display-mode: standalone)')Object.defineProperty(result,'matches',{value:true});return result;};
@@ -21,9 +20,9 @@ try{
   },mode);
   const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
   for(const language of ['en','zh-Hant','ja','leet'])for(const theme of ['dark','light']){
-   await page.goto(base);await page.evaluate(({language,theme})=>localStorage.setItem('atlasnote.preferences',JSON.stringify({language,theme})),{language,theme});
+   mock.setPreferences({language,theme,history:3,trashDays:7});await page.goto(base);
    await page.goto(base+'/settings.html');await page.waitForSelector('.account-settings');
-   const shown=mode==='not-installed';
+   const shown=mode!=='standalone';
    ok(await page.locator('.app-settings').isVisible()===shown,`${mode} ${language} ${theme}: card visibility`);
    ok(await page.locator('[data-install]').isVisible()===shown,`${mode} ${language} ${theme}: button visibility`);
    for(const [width,height]of [[1440,900],[768,1024],[390,844],[320,568]]){
@@ -38,7 +37,7 @@ try{
   if(mode==='installed-tab'){
    ok(await page.evaluate(()=>!matchMedia('(display-mode: standalone)').matches),'Installed-tab case is a normal Edge tab, not simulated PWA mode');
    await page.evaluate(()=>window.dispatchEvent(new Event('beforeinstallprompt')));
-   ok(await page.locator('.app-settings').isVisible()&&await page.locator('[data-install]').isVisible(),'A fresh install offer restores card and button together');
+   ok(await page.locator('.app-settings').isVisible()&&await page.locator('[data-install]').isVisible(),'Install remains available in a normal browser tab without a local installation marker');
   }
   ok(!errors.length,'No browser errors: '+errors.join(', '));await context.close();
  }

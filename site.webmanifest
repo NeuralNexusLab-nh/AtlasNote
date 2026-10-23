@@ -2,7 +2,7 @@
   "id": "/",
   "name": "AtlasNote",
   "short_name": "AtlasNote",
-  "description": "Write it freely, keep it closely.",
+  "description": "Write it freely, keep it closely. Notes and settings are stored in Puter; an internet connection is required.",
   "start_url": "/dashboard.html",
   "scope": "/",
   "display": "standalone",

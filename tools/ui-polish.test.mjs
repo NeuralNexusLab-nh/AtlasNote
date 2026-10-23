@@ -24,7 +24,7 @@ try{
  }
  await p.locator('[data-restore]').click();await p.waitForSelector('[data-agent]');ok(!await p.locator('.trash-note-banner').count(),'Restoring unlocks normal note actions');
  for(const language of ['en','zh-Hant','ja','leet'])for(const theme of ['dark','light']){
-  await p.evaluate(({language,theme})=>localStorage.setItem('atlasnote.preferences',JSON.stringify({language,theme,history:3,trashDays:7})),{language,theme});
+  mock.setPreferences({language,theme,history:3,trashDays:7});
   for(const route of ['/','/dashboard.html','/notes.html','/trash.html','/settings.html']){
    await p.goto(base+route);await p.waitForFunction(()=>!document.querySelector('.initial-loading'));await p.waitForTimeout(500);
    for(const [width,height]of [[1440,900],[1024,768],[768,1024],[430,932],[390,844],[360,740],[320,568],[844,390]]){

@@ -1,8 +1,7 @@
 import {t,localized as L} from './i18n.js';
 
 let deferred=null,installed=false,active=null;
-try{installed=localStorage.getItem('atlasnote.app-installed')==='true';}catch{}
-function rememberInstalled(value){installed=value;try{if(value)localStorage.setItem('atlasnote.app-installed','true');else localStorage.removeItem('atlasnote.app-installed');}catch{}}
+function rememberInstalled(value){installed=value;}
 const standalone=()=>Boolean(navigator.standalone||matchMedia('(display-mode: standalone)').matches);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fa=n=>`<i class="fa-solid fa-${n}" aria-hidden="true"></i>`;

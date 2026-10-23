@@ -14,9 +14,9 @@ const server = http.createServer(async (req,res) => {
     if (key === 'Strict-Transport-Security') continue;
     res.setHeader(key, key === 'Content-Security-Policy' ? value.replace(/; upgrade-insecure-requests$/, '') : value);
   }
-  res.setHeader('Cache-Control','no-cache');
   if (!['GET','HEAD'].includes(req.method)) { res.writeHead(405).end(); return; }
   let pathname; try { pathname = decodeURIComponent(new URL(req.url,'http://localhost').pathname); } catch { res.writeHead(400).end(); return; }
+  if(pathname==='/sw.js'||pathname==='/site.webmanifest')res.setHeader('Cache-Control','no-cache');
   const relative = aliases[pathname] || (pathname === '/' ? 'index.html' : pathname.slice(1));
   const target = path.resolve(root, relative);
   if (!target.startsWith(root + path.sep) || relative.split(/[\\/]/).some(p => p.startsWith('.')) || /^(tools|test|node_modules)(\/|\\|$)/.test(relative) || ['package.json','README.md','LICENSE','NOTICE'].includes(relative)) { res.writeHead(404).end(); return; }

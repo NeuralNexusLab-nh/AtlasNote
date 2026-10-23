@@ -18,7 +18,7 @@ try{
  const before=JSON.stringify([...mock.files.values()]);
  ok(await page.evaluate(async()=>{const S=await import('/script/store.js');return !('exportNote' in S)&&!('importEntries' in S)&&!('validateEntry' in S);}), 'File transfer functions are removed, not just hidden');
  for(const language of ['en','zh-Hant','ja','leet'])for(const theme of ['dark','light']){
-  await page.evaluate(({language,theme})=>localStorage.setItem('atlasnote.preferences',JSON.stringify({language,theme,history:3,trashDays:7})),{language,theme});
+  mock.setPreferences({language,theme,history:3,trashDays:7});
   for(const route of ['/notes.html','/trash.html','/settings.html','/note.html?id='+id,'/docs.html','/docs.html?article=sync','/terms.html','/privacy.html']){
    await page.goto(base+route);await page.waitForFunction(()=>!document.querySelector('.initial-loading'));
    ok(!await page.locator(transferControls).count(),`${language} ${theme} ${route}: no transfer controls`);
@@ -35,7 +35,7 @@ try{
  ok(await page.locator('#note-text').inputValue()==='Keep content, history and cloud sync.','Existing cloud content remains editable');
  ok(!!await page.locator('[data-image-input],#image-input,input[accept*="image"]').count(),'Image upload remains available');
  await page.goto(base+'/note.html?id='+id);await page.waitForSelector('[data-copy]');ok(true,'Copy content remains available');
- await page.evaluate(()=>localStorage.setItem('atlasnote.preferences',JSON.stringify({language:'zh-Hant',theme:'dark'})));await page.setViewportSize({width:390,height:844});await page.goto(base+'/settings.html');await page.waitForSelector('.account-settings');await page.screenshot({path:path.join(artifacts,'settings-mobile.png'),fullPage:true});
+ mock.setPreferences({language:'zh-Hant',theme:'dark',history:3,trashDays:7});await page.setViewportSize({width:390,height:844});await page.goto(base+'/settings.html');await page.waitForSelector('.account-settings');await page.screenshot({path:path.join(artifacts,'settings-mobile.png'),fullPage:true});
  await page.setViewportSize({width:1440,height:900});await page.screenshot({path:path.join(artifacts,'settings-desktop.png'),fullPage:true});
  ok(!errors.length,'No browser errors: '+errors.join(', '));console.log(JSON.stringify({checks,artifacts},null,2));
 }finally{await browser.close();}

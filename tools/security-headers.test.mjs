@@ -27,7 +27,8 @@ for(const pathname of ['/','/notes','/script/app.js','/script/kdf-worker.js','/s
  const response=await fetch(base+pathname);
  for(const [key,value] of Object.entries(policy)){
   if(key==='strict-transport-security'){assert.equal(response.headers.get(key),null);continue;}
-  assert.equal(response.headers.get(key),key==='content-security-policy'?value.replace(/; upgrade-insecure-requests$/,''):value,pathname+' '+key);
+  const expected=key==='content-security-policy'?value.replace(/; upgrade-insecure-requests$/,''):key==='cache-control'&&['/sw.js','/site.webmanifest'].includes(pathname)?'no-cache':value;
+  assert.equal(response.headers.get(key),expected,pathname+' '+key);
  }
  assert.equal(response.headers.get('access-control-allow-origin'),null);
 }
