@@ -27,7 +27,7 @@ export function fixture(){
    throw new Error('Unknown test call '+method);
    }finally{inFlight--;}
   });
-  await context.route('https://atlasnote.nxlabtw.com/**',async route=>{const url=new URL(route.request().url()),response=await fetch('http://127.0.0.1:4321'+url.pathname+url.search),headers=Object.fromEntries(response.headers);delete headers['content-length'];await route.fulfill({status:response.status,headers,body:Buffer.from(await response.arrayBuffer())});});
+  await context.route('https://atlasnote.nxlabtw.com/**',async route=>{const url=new URL(route.request().url()),response=await fetch((process.env.ATLAS_TEST_ORIGIN||'http://127.0.0.1:4321')+url.pathname+url.search),headers=Object.fromEntries(response.headers);delete headers['content-length'];await route.fulfill({status:response.status,headers,body:Buffer.from(await response.arrayBuffer())});});
   await context.addInitScript(({signedIn,username})=>{
    let authenticated=localStorage.getItem('fixture.auth')??String(signedIn);const call=(method,...args)=>window.__puterCall(method,args);
    const appID='test-atlasnote';

@@ -16,13 +16,15 @@ assert(!csp.includes("'unsafe-inline'")&&!csp.includes("'unsafe-eval'"));
 assert(csp.includes("'wasm-unsafe-eval'"),'PIN KDF needs WebAssembly, not arbitrary JS eval');
 assert(csp.includes("frame-ancestors 'none'")&&csp.includes("script-src-attr 'none'"));
 assert(csp.includes('upgrade-insecure-requests'));
+assert(csp.includes('https://puter-seoul.s3.ap-northeast-2.amazonaws.com'),'Allow the observed Puter signed-storage host');
+assert(!csp.includes('https://*.amazonaws.com'),'Do not allow arbitrary AWS buckets');
 assert.equal(policy['cross-origin-opener-policy'],'same-origin-allow-popups','Keep OAuth popup opener communication');
 assert.equal(policy['cross-origin-resource-policy'],'same-origin');
 assert(!('cross-origin-embedder-policy' in policy),'Do not break the external SDK with an unverified COEP requirement');
 assert(!Object.keys(policy).some(key=>key.startsWith('access-control-allow-')),'Domain portability must not enable wildcard CORS');
 assert(!policy['strict-transport-security'].includes('includeSubDomains'),'Do not change security policy of unrelated subdomains');
 
-const base='http://127.0.0.1:4321';
+const base=process.env.ATLAS_TEST_ORIGIN||'http://127.0.0.1:4321';
 for(const pathname of ['/','/notes','/script/app.js','/script/kdf-worker.js','/site.webmanifest','/sw.js','/not-a-page']){
  const response=await fetch(base+pathname);
  for(const [key,value] of Object.entries(policy)){
@@ -50,6 +52,7 @@ try{
    await route.fulfill({status:response.status,headers,body:Buffer.from(await response.arrayBuffer())});
   });
   await context.route('https://untrusted.example.net/**',route=>{requests.push(route.request().url());return route.abort();});
+  for(const pattern of ['https://other-bucket.s3.ap-northeast-2.amazonaws.com/**','https://puter-seoul.s3.ap-northeast-2.amazonaws.com.attacker.example/**'])await context.route(pattern,route=>{requests.push(route.request().url());return route.abort();});
   await context.addInitScript(()=>{window.__violations=[];document.addEventListener('securitypolicyviolation',event=>window.__violations.push(event.effectiveDirective));});
   const page=await context.newPage();
   await page.goto('https://'+host+'/edit.html');await page.waitForSelector('#note-title');
@@ -62,6 +65,8 @@ try{
    finally{vault.key.fill(0);}
   });
   assert.equal(result,'Argon and AES still work');
+  const uploadErrors=await page.evaluate(async()=>{const {errorKey}=await import('/script/cloud.js');return [errorKey({partial:true,failedItems:[{stage:'upload'}]}),errorKey({partial:true,failedItems:[{}],status:429}),errorKey({partial:true,failedItems:[{}],status:401}),errorKey({partial:true,failedItems:[{}],status:402})];});
+  assert.deepEqual(uploadErrors,['cloudUpload','cloudRate','cloudAuth','cloudCredit'],'Upload errors are useful without masking authentication, rate or quota failures');
   assert.deepEqual(await page.evaluate(()=>window.__violations),[],host+' legitimate application has no CSP violations');
   const originalBase=await page.evaluate(()=>document.baseURI);
   await page.evaluate(async()=>{
@@ -70,6 +75,8 @@ try{
    const button=document.createElement('button');button.setAttribute('onclick','window.__eventInjected=true');document.body.append(button);button.click();button.remove();
    const base=document.createElement('base');base.href='https://untrusted.example.net/';document.head.append(base);
    try{await fetch('https://untrusted.example.net/collect');}catch{}
+   try{await fetch('https://other-bucket.s3.ap-northeast-2.amazonaws.com/probe');}catch{}
+   try{await fetch('https://puter-seoul.s3.ap-northeast-2.amazonaws.com.attacker.example/probe');}catch{}
   });
   await page.waitForTimeout(200);
   assert.equal(await page.evaluate(()=>!!window.__injected||!!window.__eventInjected),false);

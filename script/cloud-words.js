@@ -1,5 +1,6 @@
 // Added to the existing dictionary; l33t continues to use its existing transform.
 export const cloudWords={
+ cloudUpload:['Cloud upload did not finish. Keep this page open and retry to avoid losing unsaved changes.','雲端上傳未完成。請保留目前頁面並重試，避免遺失尚未儲存的修改。','クラウドへのアップロードを完了できませんでした。未保存の変更を失わないよう、このページを開いたまま再試行してください。'],
  copyFailed:['Could not copy automatically. Select the note content and copy it manually.','無法自動複製。請選取筆記內容，再手動複製。','自動でコピーできませんでした。本文を選択して手動でコピーしてください。'],
 audit_title:['Read-only cloud check','唯讀雲端檢查','クラウドの読み取り専用チェック'],
  audit_intro:['Checks AtlasNote folders and change records only. It does not open note contents, read account keys, save, clean up or delete anything.','只檢查 AtlasNote 目錄與變更紀錄。不開啟筆記內容、不讀取帳號金鑰，也不會儲存、清理或刪除任何資料。','AtlasNote のフォルダーと変更記録のみ確認します。ノート本文やアカウント鍵の読み取り、保存、整理、削除は行いません。'],

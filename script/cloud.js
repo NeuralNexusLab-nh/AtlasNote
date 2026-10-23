@@ -18,7 +18,15 @@ export const status=()=>state;
 export const signedIn=()=>ready&&!!user;
 function notify(value){state=value;window.dispatchEvent(new CustomEvent('atlas-cloud',{detail:{state}}));}
 function missing(e){return e?.status===404||e?.error?.status===404||['ENOENT','not_found','subject_does_not_exist'].includes(e?.code)||['ENOENT','not_found','subject_does_not_exist'].includes(e?.error?.code);}
-export function errorKey(e){const code=e?.code||e?.error?.code||e?.error||e?.message;if(isRateLimited(e))return 'cloudRate';if(e?.status===401||e?.error?.status===401||['invalid_token','authentication_required'].includes(code))return 'cloudAuth';return e?.status===402||['insufficient_funds','subscription_required'].includes(code)?'cloudCredit':e?.status===413||code==='storage_limit_reached'?'cloudFull':['cloudAuth','cloudOffline','cloudConflict','cloudInvalid','cloudPending','cloudKey','mainSiteOnly'].includes(code)?code:'cloudError';}
+export function errorKey(e){
+  const code=e?.code||e?.error?.code||e?.error||e?.message;
+  if(isRateLimited(e))return 'cloudRate';
+  if(e?.status===401||e?.error?.status===401||['invalid_token','authentication_required'].includes(code))return 'cloudAuth';
+  if(e?.status===402||['insufficient_funds','subscription_required'].includes(code))return 'cloudCredit';
+  if(e?.status===413||code==='storage_limit_reached')return 'cloudFull';
+  if((e?.partial===true&&Array.isArray(e.failedItems))||['batch_upload_failed','batch_upload_partially_failed','batch_upload_no_results'].includes(code))return 'cloudUpload';
+  return ['cloudAuth','cloudOffline','cloudConflict','cloudInvalid','cloudPending','cloudKey','cloudUpload','mainSiteOnly'].includes(code)?code:'cloudError';
+}
 async function remote(work,kind='read'){
   const ticket=session,p=await sdk(),token=p.authToken;
   try{return await requests.run(()=>{if(ticket!==session||!p.auth.isSignedIn()||token!==p.authToken)throw new Error('cloudAuth');return work();},kind);}

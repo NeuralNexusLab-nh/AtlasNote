@@ -17,7 +17,7 @@ export async function resources(){
 }
 export function loginGate(){
  const p=Cloud.profile(),reconnecting=p&&Cloud.status()!=='signedOut';
- const issue=Cloud.status()==='offline'?'cloudOffline':['cloudRate','cloudKey','cloudInvalid','cloudError','cloudPending'].includes(Cloud.status())?Cloud.status():'onlineRequired';
+ const issue=Cloud.status()==='offline'?'cloudOffline':['cloudRate','cloudKey','cloudInvalid','cloudError','cloudPending','cloudUpload'].includes(Cloud.status())?Cloud.status():'onlineRequired';
  $('#main').innerHTML=`<section class="auth-layout"><div class="card auth-card"><p class="eyebrow">${H.icon('cloud')}AtlasNote</p><h1>${t('loginTitle')}</h1><p class="lead">${t('loginDescription')}</p><div class="auth-connect-status" role="status">${H.icon(Cloud.status()==='offline'?'wifi':'shield-halved')}<span>${t(issue)}</span></div><div class="auth-buttons">${H.button(p?'reconnect':'login',p?'rotate':'right-to-bracket','data-cloud-login','primary')}</div><p class="hint auth-legal"><a href="/terms.html">${t('terms')}</a><span>·</span><a href="/privacy.html">${t('privacy')}</a></p></div><div class="auth-art" aria-hidden="true"><div class="auth-orbit"></div><img src="/asset/logo.svg" alt="" width="116" height="116"><span>Write it freely,<br>keep it closely.</span></div></section>`;
  const b=$('[data-cloud-login]');if(b){b.innerHTML=H.icon(reconnecting?'rotate':'right-to-bracket')+`<span>${t(reconnecting?'reconnect':'login')}</span>`;b.addEventListener('click',async()=>{b.disabled=true;try{Cloud.profile()&&!['signedOut','cloudAuth'].includes(Cloud.status())?await Cloud.connect():await Cloud.signIn();await H.render();}catch(e){await H.alertMessage(t(Cloud.errorKey(e)));await H.render();}finally{b.disabled=false;}});}
 }
