@@ -6,8 +6,8 @@ export function useAccountKey(bytes){accountRoot?.fill(0);accountRoot=bytes?new 
 export function hasRoot(){return !!accountRoot;}
 export const b64 = bytes => { let s=''; for(let i=0;i<bytes.length;i+=8192)s+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(s); };
 export const unb64 = s => {
-  if(typeof s!=='string'||s.length>340_000_000||!s.length||s.length%4||/[^A-Za-z0-9+/=]/.test(s))throw new Error('invalidBackup');
-  let raw;try{raw=atob(s);}catch{throw new Error('invalidBackup');}
+  if(typeof s!=='string'||s.length>340_000_000||!s.length||s.length%4||/[^A-Za-z0-9+/=]/.test(s))throw new Error('invalidData');
+  let raw;try{raw=atob(s);}catch{throw new Error('invalidData');}
   const bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);return bytes;
 };
 export const random = n => crypto.getRandomValues(new Uint8Array(n));
@@ -31,8 +31,8 @@ export async function seal(key,id,purpose,data) {
   return {iv:b64(iv),data:b64(new Uint8Array(ciphertext))};
 }
 export async function open(key,id,purpose,box) {
-  if(!box||typeof box!=='object')throw new Error('invalidBackup');
-  const iv=unb64(box.iv),bytes=unb64(box.data);if(iv.length!==12||bytes.length<16)throw new Error('invalidBackup');
+  if(!box||typeof box!=='object')throw new Error('invalidData');
+  const iv=unb64(box.iv),bytes=unb64(box.data);if(iv.length!==12||bytes.length<16)throw new Error('invalidData');
   return JSON.parse(dec.decode(await crypto.subtle.decrypt({name:'AES-GCM',iv,additionalData:aad(id,purpose),tagLength:128},await importAES(key),bytes)));
 }
 export function validatePIN(pin){return typeof pin==='string'&&/^[\x20-\x7e]{4,16}$/.test(pin);}
@@ -47,6 +47,6 @@ export function pinKey(pin,salt,id) {
   });
 }
 export async function createVault(id,pin){const key=random(32),salt=b64(random(16)),wrapping=await pinKey(pin,salt,id);try{return {key,salt,wrap:await seal(wrapping,id,'wrapped-key',b64(key))};}finally{wrapping.fill(0);}}
-export async function unlockVault(note,pin){const salt=unb64(note.salt);if(salt.length!==16)throw new Error('invalidBackup');const wrapping=await pinKey(pin,note.salt,note.id);try{const raw=unb64(await open(wrapping,note.id,'wrapped-key',note.wrap));if(raw.length!==32)throw new Error('invalidBackup');return raw;}finally{wrapping.fill(0);}}
+export async function unlockVault(note,pin){const salt=unb64(note.salt);if(salt.length!==16)throw new Error('invalidData');const wrapping=await pinKey(pin,note.salt,note.id);try{const raw=unb64(await open(wrapping,note.id,'wrapped-key',note.wrap));if(raw.length!==32)throw new Error('invalidData');return raw;}finally{wrapping.fill(0);}}
 export async function protectTitle(id,title,create=false){const key=await deviceKey(id,'title',create);try{return await seal(key,id,'title',title);}finally{key.fill(0);}}
 export async function readTitle(note){if(note.mode==='none')return note.body.title;try{const key=await deviceKey(note.id,'title');try{return await open(key,note.id,'title',note.titleBox);}finally{key.fill(0);}}catch{return null;}}

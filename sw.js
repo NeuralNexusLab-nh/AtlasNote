@@ -1,5 +1,5 @@
 /* Cache the application shell only. Never serialize decrypted notes or keys. */
-const CACHE='atlasnote-shell-cloud-v5';
+const CACHE='atlasnote-shell-cloud-v6';
 const ASSETS=['/','/index.html','/notes.html','/note.html','/edit.html','/trash.html','/settings.html','/docs.html','/privacy.html','/terms.html','/style.css','/site.webmanifest','/asset/logo.svg','/asset/icon-192.png','/asset/icon-512.png','/asset/icon-maskable.png','/asset/fontawesome/css/all.min.css','/asset/fontawesome/webfonts/fa-solid-900.woff2','/asset/fontawesome/webfonts/fa-brands-400.woff2','/asset/fontawesome/webfonts/fa-regular-400.woff2','/script/theme.js','/script/app.js','/script/crypto.js','/script/kdf-worker.js','/script/store.js','/script/i18n.js','/script/docs.js','/script/meteors.js','/script/vendor/markdown-it.min.js','/script/vendor/argon2.umd.min.js'];
 ASSETS.push('/favicon.ico','/script/install.js','/install.css','/script/policies.js','/script/images.js');
 ASSETS.push('/dashboard.html','/cloud.css','/script/cloud.js','/script/cloud-ui.js','/script/cloud-words.js');

@@ -2,6 +2,7 @@ AtlasNote — NXLabTW
 Contact: atlasnote@nxlabtw.com
 
 Original application code and branding: Copyright 2026 NXLabTW, all rights reserved.
+The public repository does not grant an open-source license to original code. See LICENSE.
 
 Locally bundled third-party components:
 - markdown-it 14.3.3 — MIT; script/vendor/markdown-it.LICENSE

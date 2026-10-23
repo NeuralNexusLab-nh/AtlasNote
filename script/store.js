@@ -30,13 +30,13 @@ export async function cleanup(){for(const n of await all())if(n.trashedAt&&Date.
 export function preferences(){try{const p=JSON.parse(localStorage.getItem('atlasnote.preferences')||'{}');return {theme:p.theme==='light'?'light':'dark',language:['en','zh-Hant','ja','leet'].includes(p.language)?p.language:null,history:[0,1,3,5,10,20].includes(p.history)?p.history:3,trashDays:[1,3,7,14,30].includes(p.trashDays)?p.trashDays:7};}catch{return {theme:'dark',language:null,history:3,trashDays:7};}}
 export function savePreferences(p){localStorage.setItem('atlasnote.preferences',JSON.stringify(p));}
 export function patch(current,previous){let a=0,b=0;while(a<current.length&&a<previous.length&&current[a]===previous[a])a++;while(b<current.length-a&&b<previous.length-a&&current[current.length-b-1]===previous[previous.length-b-1])b++;return [a,current.length-a-b,previous.slice(a,previous.length-b)];}
-export function apply(text,p){if(!Array.isArray(p)||p.length!==3||!Number.isInteger(p[0])||!Number.isInteger(p[1])||p[0]<0||p[1]<0||p[0]+p[1]>text.length||typeof p[2]!=='string'||p[2].length>LIMITS.text)throw new Error('invalidBackup');const result=text.slice(0,p[0])+p[2]+text.slice(p[0]+p[1]);if(result.length>LIMITS.text)throw new Error('invalidBackup');return result;}
+export function apply(text,p){if(!Array.isArray(p)||p.length!==3||!Number.isInteger(p[0])||!Number.isInteger(p[1])||p[0]<0||p[1]<0||p[0]+p[1]>text.length||typeof p[2]!=='string'||p[2].length>LIMITS.text)throw new Error('invalidData');const result=text.slice(0,p[0])+p[2]+text.slice(p[0]+p[1]);if(result.length>LIMITS.text)throw new Error('invalidData');return result;}
 export function validatePayload(p){
-  if(!p||typeof p!=='object'||typeof p.title!=='string'||p.title.length<1||p.title.length>80||typeof p.text!=='string'||p.text.length>LIMITS.text||!Array.isArray(p.images)||p.images.length>LIMITS.images||!Array.isArray(p.history)||p.history.length>20)throw new Error('invalidBackup');
+  if(!p||typeof p!=='object'||typeof p.title!=='string'||p.title.length<1||p.title.length>80||typeof p.text!=='string'||p.text.length>LIMITS.text||!Array.isArray(p.images)||p.images.length>LIMITS.images||!Array.isArray(p.history)||p.history.length>20)throw new Error('invalidData');
   const ids=new Set();
-  for(const i of p.images){if(!i||!/^img_[a-f0-9]{12}$/.test(i.id)||ids.has(i.id)||!['image/webp','image/png','image/jpeg'].includes(i.type)||typeof i.data!=='string'||i.data.length>Math.ceil(LIMITS.image/3)*4||typeof i.caption!=='string'||i.caption.length>400||!Number.isInteger(i.width)||!Number.isInteger(i.height)||i.width<1||i.height<1||i.width>LIMITS.dimension||i.height>LIMITS.dimension||i.width*i.height>LIMITS.pixels)throw new Error('invalidBackup');const data=C.unb64(i.data),dimensions=imageDimensions(data,i.type);if(data.length>LIMITS.image||!dimensions||dimensions.width!==i.width||dimensions.height!==i.height)throw new Error('invalidBackup');ids.add(i.id);}
+  for(const i of p.images){if(!i||!/^img_[a-f0-9]{12}$/.test(i.id)||ids.has(i.id)||!['image/webp','image/png','image/jpeg'].includes(i.type)||typeof i.data!=='string'||i.data.length>Math.ceil(LIMITS.image/3)*4||typeof i.caption!=='string'||i.caption.length>400||!Number.isInteger(i.width)||!Number.isInteger(i.height)||i.width<1||i.height<1||i.width>LIMITS.dimension||i.height>LIMITS.dimension||i.width*i.height>LIMITS.pixels)throw new Error('invalidData');const data=C.unb64(i.data),dimensions=imageDimensions(data,i.type);if(data.length>LIMITS.image||!dimensions||dimensions.width!==i.width||dimensions.height!==i.height)throw new Error('invalidData');ids.add(i.id);}
   let text=p.text,title=p.title;
-  for(const h of p.history){if(!h||!Number.isFinite(Date.parse(h.at)))throw new Error('invalidBackup');text=apply(text,h.text);title=apply(title,h.title);if(title.length>80)throw new Error('invalidBackup');}
+  for(const h of p.history){if(!h||!Number.isFinite(Date.parse(h.at)))throw new Error('invalidData');text=apply(text,h.text);title=apply(title,h.title);if(title.length>80)throw new Error('invalidData');}
   // Whitelist fields so parsed JSON cannot inject settings, paths or prototype properties.
   return {title:p.title,text:p.text,images:p.images.map(i=>({id:i.id,type:i.type,data:i.data,caption:i.caption,width:i.width,height:i.height})),history:p.history.map(h=>({at:h.at,text:h.text,title:h.title}))};
 }
@@ -62,32 +62,4 @@ export async function saveNote(note,payload,key,previous=null){
   if(previous&&(previous.title!==payload.title||previous.text!==payload.text))payload.history.unshift({at:note.updatedAt,title:patch(payload.title,previous.title),text:patch(payload.text,previous.text)});
   payload.history=payload.history.slice(0,limit);
   const now=new Date().toISOString();return put(await encodeRecord({...note,createdAt:note.createdAt||now,updatedAt:now},payload,key),note.rev||0);
-}
-export async function exportNote(note){
-  const entry={format:'AtlasNote',version:1,exportedAt:new Date().toISOString(),id:note.id,mode:note.mode,createdAt:note.createdAt,updatedAt:note.updatedAt,pinned:!!note.pinned,archived:!!note.archived,body:note.body};
-  if(note.mode==='basic'){const key=await C.deviceKey(note.id);entry.key=C.b64(key);key.fill(0);}
-  if(note.mode==='secure'){entry.salt=note.salt;entry.wrap=note.wrap;}
-  if(note.attachments)entry.attachments=note.attachments;
-  return entry;
-}
-export function validateEntry(entry){
-  if(!entry||entry.format!=='AtlasNote'||entry.version!==1||!['none','basic','secure'].includes(entry.mode)||! /^[a-f0-9-]{36}$/.test(entry.id)||!Number.isFinite(Date.parse(entry.createdAt))||!Number.isFinite(Date.parse(entry.updatedAt)))throw new Error('invalidBackup');
-  if(entry.mode==='none')validatePayload(entry.body);else{if(!entry.body||C.unb64(entry.body.iv).length!==12||C.unb64(entry.body.data).length<16)throw new Error('invalidBackup');if(entry.mode==='basic'&&C.unb64(entry.key).length!==32)throw new Error('invalidBackup');if(entry.mode==='secure'&&(!entry.wrap||C.unb64(entry.salt).length!==16||C.unb64(entry.wrap.iv).length!==12||C.unb64(entry.wrap.data).length>256||'key' in entry))throw new Error('invalidBackup');if(entry.attachments&&(!Array.isArray(entry.attachments)||entry.attachments.length>3||entry.attachments.some(a=>!/^img_[a-f0-9]{12}$/.test(a.id)||C.unb64(a.box?.iv).length!==12||typeof a.box?.data!=='string'||a.box.data.length>24_000_000)))throw new Error('invalidBackup');}
-  return entry;
-}
-export async function importEntries(entries,askPIN){
-  if(!Array.isArray(entries)||entries.length!==1)throw new Error('invalidBackup');
-  entries.forEach(validateEntry);const prepared=[];
-  for(const e of entries){let key,payload,newKey;try{
-    if(e.mode==='none')payload=validatePayload(e.body);
-    else{key=e.mode==='basic'?C.unb64(e.key):await C.unlockVault(e,await askPIN());payload=await C.open(key,e.id,'content',e.body);if(e.attachments)payload.images=await Promise.all(e.attachments.map(a=>C.open(key,e.id,'image:'+a.id,a.box)));payload=validatePayload(payload);}
-    const id=uuid(),record={id,mode:e.mode,createdAt:e.createdAt,updatedAt:e.updatedAt,pinned:!!e.pinned,archived:!!e.archived,trashedAt:null,rev:1};
-    if(e.mode==='secure'){// Rewrap a fresh note key under the supplied passphrase and new ID.
-      const pin=await askPIN('newImportPIN');const vault=await C.createVault(id,pin);newKey=vault.key;record.salt=vault.salt;record.wrap=vault.wrap;
-    }
-    prepared.push(await encodeRecord(record,payload,newKey));
-  }finally{key?.fill(0);newKey?.fill(0);}}
-  // All-or-nothing import. Crypto/validation happens before opening the transaction.
-  for(const n of prepared)await put(n,0);
-  return prepared.length;
 }

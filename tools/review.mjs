@@ -32,10 +32,8 @@ try{
  });
  ok(generated.sourceBytes>10_000_000,'Accepts source image above old 10 MB ceiling');await page.waitForFunction(()=>document.querySelectorAll('.image-card').length===3,{},{timeout:120000});
  await page.locator('#save-note').click();await page.waitForURL('**/note.html?id=*',{timeout:120000});await page.waitForSelector('#note-content img',{timeout:120000});
- const note=await page.evaluate(async()=>{const S=await import('/script/store.js');const n=(await S.all())[0],p=await S.decodeRecord(n);return {id:n.id,count:p.images.length,width:p.images[0].width,exportBytes:S.bytes(await S.exportNote(n))};});
- ok(note.count===3&&note.width===3200,'Images retain dimensions above old 2048 limit');ok(note.exportBytes>25_000_000,'Large note backup exceeds old 25 MB ceiling');
- await page.locator('[data-export]').click();const downloaded=page.waitForEvent('download');await page.locator('dialog [data-confirm]').click();const download=await downloaded,backup=await download.path(),stat=await fs.stat(backup);ok(stat.size>25_000_000,'Large JSON actually downloads');
- await page.goto(base+'/settings.html');await page.waitForSelector('[data-import]');const chooser=page.waitForEvent('filechooser');await page.locator('[data-import]').click();await(await chooser).setFiles(backup);await page.waitForSelector('dialog [data-confirm]',{timeout:120000});await page.locator('dialog [data-confirm]').click();
- ok(await page.evaluate(async()=>{const S=await import('/script/store.js');return (await S.all()).length===2;}),'Large JSON actually imports without overwriting');
- ok(!errors.length,'No runtime errors: '+errors.join(','));console.log(`PASS ${checks} targeted checks. Large source ${(generated.sourceBytes/1e6).toFixed(1)} MB; backup ${(stat.size/1e6).toFixed(1)} MB. Screenshots: ${artifacts}`);
+ const note=await page.evaluate(async()=>{const S=await import('/script/store.js');const n=(await S.all())[0],p=await S.decodeRecord(n);return {id:n.id,count:p.images.length,width:p.images[0].width,recordBytes:S.bytes(n)};});
+ ok(note.count===3&&note.width===3200,'Images retain dimensions above old 2048 limit');ok(note.recordBytes>25_000_000,'Large image note remains supported without file transfer');
+ ok(!await page.locator('[data-export],[data-import]').count(),'Large notes do not expose file transfers');
+ ok(!errors.length,'No runtime errors: '+errors.join(','));console.log(`PASS ${checks} targeted checks. Large source ${(generated.sourceBytes/1e6).toFixed(1)} MB; record ${(note.recordBytes/1e6).toFixed(1)} MB. Screenshots: ${artifacts}`);
 }catch(error){await page.screenshot({path:path.join(artifacts,'failure.png'),fullPage:true}).catch(()=>{});console.error(error,errors,'Screenshots:',artifacts);process.exitCode=1;}finally{await context.close();await browser.close();}
