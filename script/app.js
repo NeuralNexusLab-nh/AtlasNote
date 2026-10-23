@@ -9,6 +9,7 @@ import * as Cloud from './cloud.js';
 import * as CloudUI from './cloud-ui.js';
 import * as Unlock from './unlock-cache.js';
 import {homeDetails} from './home-content.js';
+import {clearLegacy} from './legacy-storage.js';
 
 const $=(s,root=document)=>root.querySelector(s),$$=(s,root=document)=>[...root.querySelectorAll(s)];
 export const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -307,6 +308,8 @@ CloudUI.configureUI({icon,button,linkButton,escape,size,bind,dialog,alertMessage
 function updateCloudStatus(){const badge=$('[data-cloud-status]');if(!badge)return;const state=Cloud.status(),key=['synced','syncing','pending','connecting','signedOut','offline'].includes(state)?state:state==='conflict'?'resolve':'cloudError';badge.innerHTML=icon(state==='synced'?'cloud':state==='conflict'?'triangle-exclamation':state==='signedOut'?'right-to-bracket':'rotate')+`<span>${escape(t(key))}</span>`;badge.setAttribute('aria-label',t(key));badge.title=t(state.startsWith('cloud')?state:key);badge.dataset.state=state;}
 window.addEventListener('atlas-cloud',()=>{if($('.nav-link').length!==(Cloud.signedIn()?6:2))chrome();else updateCloudStatus();updateHomeActions();});
 window.addEventListener('atlas-access-lost',()=>{if(['dashboard','notes','trash','note','edit','settings'].includes(currentPage)){if(editor&&editorDirty){pausedDraft={owner:Cloud.profile()?.uuid,note:structuredClone(editor.note),payload:structuredClone(editor.payload),key:editor.key?new Uint8Array(editor.key):null};}clearKeys();document.querySelectorAll('dialog').forEach(d=>{d.dispatchEvent(new Event('atlas-dismiss'));if(d.isConnected){d.close();d.remove();}});CloudUI.loginGate();}});
+// Retire pre-Puter notes and their key, even when signed out. Never touch cloud caches.
+clearLegacy({onBlocked:()=>alertMessage(t('legacyBusy'))}).catch(error=>console.warn('[AtlasNote] Legacy cleanup failed; will retry on next load',error.message));
 const cloudBoot=Cloud.boot().then(async p=>{if(p){try{const saved=await Cloud.retention();if(saved){prefs={...prefs,...saved};S.savePreferences(prefs);}}catch{}}return p;});
 await render();
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(error=>console.warn('[AtlasNote] Offline registration failed',error.message));

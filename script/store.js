@@ -1,5 +1,5 @@
 import * as C from './crypto.js';
-let DB='atlasnote-v1',dbPromise,backend=null;
+let DB='atlasnote-locked',dbPromise,backend={authorize:async()=>{throw new Error('cloudAuth');}};
 export function configureAccount(id,adapter){if(!/^[a-zA-Z0-9-]{1,100}$/.test(id))throw new Error('cloudAuth');DB='atlasnote-cloud-'+id;dbPromise=null;backend=adapter;}
 export function detachAccount(){backend={authorize:async()=>{throw new Error('cloudAuth');}};dbPromise=null;DB='atlasnote-locked';C.useAccountKey(null);}
 async function authorize(){if(backend)await backend.authorize();}
