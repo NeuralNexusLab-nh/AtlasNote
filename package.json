@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Encrypted notes, images and AI with Puter sign-in and cloud synchronization.",
-  "scripts": { "start": "node tools/serve.mjs", "test": "node tools/cloud.test.mjs && node tools/cloud-safety.test.mjs && node tools/legacy-cleanup.test.mjs && node tools/product.test.mjs && node tools/ui-polish.test.mjs && node tools/interactions.mjs && node tools/compression.test.mjs && node tools/no-transfer.test.mjs && node tools/install-visibility.test.mjs", "test:puter-login": "node tools/puter-live-smoke.mjs" },
+  "scripts": { "start": "node tools/serve.mjs", "test": "node tools/security-headers.test.mjs && node tools/cloud.test.mjs && node tools/cloud-safety.test.mjs && node tools/legacy-cleanup.test.mjs && node tools/product.test.mjs && node tools/ui-polish.test.mjs && node tools/interactions.mjs && node tools/compression.test.mjs && node tools/no-transfer.test.mjs && node tools/install-visibility.test.mjs", "test:puter-login": "node tools/puter-live-smoke.mjs" },
   "engines": { "node": ">=22" },
   "license": "UNLICENSED"
 }

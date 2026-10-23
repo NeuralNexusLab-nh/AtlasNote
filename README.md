@@ -8,7 +8,7 @@ AtlasNote can be installed as a web app for quick access. Installation does not 
 
 ## Local preview
 
-Run `npm start` with Node 22 or newer, then open http://127.0.0.1:4321. The Node process only serves static files and security headers. Use HTTPS on the production domain, atlasnote.nxlabtw.com. Do not open files through file://.
+Run `npm start` with Node 22 or newer, then open http://127.0.0.1:4321. The Node process only serves static files and security headers. Production can use any HTTPS domain with AtlasNote hosted at its root; no source-code domain replacement is required. Do not open files through file://.
 
 This is a local integration preview, not an assertion that a real Puter account has passed every cloud operation. The official remote SDK and authorization-window launch have been exercised without credentials; account storage, synchronization and AI tests use a contract double in isolated browser contexts. No original personal notes or accounts are used.
 
@@ -55,7 +55,18 @@ On every app load, AtlasNote automatically and permanently deletes the retired p
 
 The original image safeguards remain: 100 MB source files, 67.1 MP decoded images, 8192 px dimensions and 16 MB stored images. These are memory safeguards, not paid plans. Whole-file JSON parsing is not a guarantee of multi-GB import success.
 
-Puter's app identity defines the cloud namespace. Test localhost separately from the final production origin and verify app registration/origin identity before release. No broad filesystem, mailbox or public-file sharing permissions are requested. SDK access is limited in CSP to official Puter script/API/frame origins. `_headers` is a static-host configuration template; verify its actual application when deploying. The service worker caches only own-origin application assets, not cloud responses, decrypted notes or keys.
+Puter's app identity defines the cloud namespace. Test localhost separately from every production origin and verify Puter app registration/authorization before release. Deploying the same files on another domain does not automatically share the original domain's Puter app identity, cloud namespace, browser storage or installed app. No broad filesystem, mailbox or public-file sharing permissions are requested. The service worker caches only own-origin application assets, not cloud responses, decrypted notes or keys.
+
+### Domain-independent security headers
+
+`edgeone.json` configures EdgeOne's native response headers for every path, including worker scripts. `_headers` carries the identical policy for hosts supporting that format; other hosts must configure equivalent HTTP response headers. The local preview reads `edgeone.json` directly, omitting HTTPS upgrade/HSTS only because it listens on HTTP loopback. No wildcard CORS is enabled: allowing deployment on different domains does not allow other sites to read this site's resources.
+
+- CSP defaults to denying resources. Own-origin files use `'self'`; only the official Puter SDK, API/subdomain connections and authentication frame are allowlisted. Inline scripts, event handlers, JavaScript eval, plugins, foreign base URLs and embedding AtlasNote in frames are blocked. WebAssembly compilation remains allowed for the PIN derivation worker; the code does not require arbitrary JavaScript eval. Raw Markdown HTML and remote Markdown images remain disabled.
+- `X-Frame-Options: DENY`, `nosniff`, no-referrer, same-origin resource policy, origin-keyed agent clusters and restrictive feature permissions provide additional boundaries. Clipboard writing remains available for Copy Content; unused device/sensor permissions are denied.
+- `Cross-Origin-Opener-Policy: same-origin-allow-popups` intentionally preserves Puter authorization-window communication. COEP is not forced, since unverified cross-origin isolation can break the external SDK. HSTS lasts one year without forcing policies onto unrelated subdomains or preloading an arbitrary domain.
+- HTTPS, correct MIME types and host-level delivery of these headers are deployment requirements. EdgeOne's own CAPTCHA/error responses may be generated before site-level rules; verify application responses separately. Headers do not eliminate compromised clients, trusted SDK supply-chain risks, provider incidents or the need for security review.
+
+Run `node tools/security-headers.test.mjs` with the local preview running to check policy parity, error/worker responses and browser enforcement on two isolated synthetic HTTPS origins. The test exercises real WebCrypto/Argon2 with synthetic notes and blocks malicious scripts, connections, base changes and iframe embedding. It does not authenticate a real Puter account or imply cross-domain cloud sharing.
 
 For Puter account, billing, allowance or service incidents use Puter support. For AtlasNote code/UI bugs contact atlasnote@nxlabtw.com. No guarantee is made that a third party compensates losses; applicable non-waivable rights remain.
 

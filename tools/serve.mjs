@@ -4,11 +4,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const types = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.png':'image/png', '.ico':'image/x-icon', '.woff2':'font/woff2', '.json':'application/json', '.webmanifest':'application/manifest+json', '.txt':'text/plain; charset=utf-8' };
-const csp = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://js.puter.com; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.puter.com https://*.puter.com wss://api.puter.com; frame-src https://puter.com; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; manifest-src 'self'";
+// Use the production host policy locally too, including worker and error responses.
+const { headers: headerRules } = JSON.parse(await fs.readFile(path.join(root, 'edgeone.json'), 'utf8'));
+const securityHeaders = headerRules.find(rule => rule.source === '/*').headers;
 const aliases = { '/dashboard':'dashboard.html', '/notes':'notes.html', '/note':'note.html', '/edit':'edit.html', '/new':'edit.html', '/settings':'settings.html', '/trash':'trash.html', '/docs':'docs.html', '/privacy':'privacy.html', '/terms':'terms.html' };
 const server = http.createServer(async (req,res) => {
-  res.setHeader('Content-Security-Policy',csp); res.setHeader('X-Content-Type-Options','nosniff'); res.setHeader('Referrer-Policy','no-referrer');
-  res.setHeader('X-Frame-Options','DENY'); res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=(), payment=()'); res.setHeader('Cache-Control','no-cache');
+  for (const { key, value } of securityHeaders) {
+    // This preview listens on HTTP loopback only. HTTPS upgrade/HSTS belong to the production host.
+    if (key === 'Strict-Transport-Security') continue;
+    res.setHeader(key, key === 'Content-Security-Policy' ? value.replace(/; upgrade-insecure-requests$/, '') : value);
+  }
+  res.setHeader('Cache-Control','no-cache');
   if (!['GET','HEAD'].includes(req.method)) { res.writeHead(405).end(); return; }
   let pathname; try { pathname = decodeURIComponent(new URL(req.url,'http://localhost').pathname); } catch { res.writeHead(400).end(); return; }
   const relative = aliases[pathname] || (pathname === '/' ? 'index.html' : pathname.slice(1));
