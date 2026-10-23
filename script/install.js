@@ -38,6 +38,8 @@ export function refreshInstallButtons(){
  const focusHero=hidden&&document.activeElement?.matches('[data-hero-install]');
  if(standalone()&&!installed)rememberInstalled(true);
  document.querySelectorAll('[data-install-control],[data-install],[data-hero-install]').forEach(b=>{b.hidden=hidden;});
+ // Settings now contains only installation here; hide its title and card too.
+ document.querySelectorAll('.app-settings').forEach(section=>{section.hidden=hidden;});
  document.querySelectorAll('[data-hero-notes]').forEach(link=>{link.hidden=!hidden;});
  if(focusHero)document.querySelector('[data-hero-notes]')?.focus({preventScroll:true});
 }
