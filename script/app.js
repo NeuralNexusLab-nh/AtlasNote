@@ -10,7 +10,7 @@ import * as CloudUI from './cloud-ui.js';
 import * as Unlock from './unlock-cache.js';
 import {homeDetails} from './home-content.js';
 import {clearLegacy} from './legacy-storage.js';
-import {isMainSite} from './site-origin.js';
+import {isMainSite,mainSiteURL} from './site-origin.js';
 import {notePreview} from './note-preview.js';
 import {createRouter} from './router.js';
 
@@ -357,11 +357,8 @@ window.addEventListener('atlas-access-lost',()=>{
   if(privatePages.includes(currentPage)){CloudUI.loginGate();main.inert=false;main.removeAttribute('aria-busy');}
 });
 if(!isMainSite()){
-  document.title='AtlasNote';
-  $('#navbar').innerHTML='<a class="brand" href="https://atlasnote.nxlabtw.com/"><img src="/asset/logo.svg" alt="" width="31" height="31"><span>AtlasNote</span></a>';
-  $('#main').innerHTML=`<section class="card empty main-site-gate"><p class="eyebrow">AtlasNote</p><h1>${t('mainSiteOnly')}</h1><a class="button primary" href="https://atlasnote.nxlabtw.com/">${t('home')}</a></section>`;
-  $('#footer').innerHTML='<p>AtlasNote · NXLabTW</p>';
-  document.documentElement.dataset.theme='dark';
+  // Keep this deployment completely static: redirect before Puter or account UI starts.
+  window.location.replace(mainSiteURL());
 }else{
 router=createRouter({render,canLeave,onError:error=>void fail(error)});
 // Retire pre-Puter notes and their key, even when signed out. Never touch cloud caches.

@@ -1,11 +1,11 @@
 import {auditCloud,errorKey} from './cloud-audit.js';
-import {isMainSite,MAIN_ORIGIN} from './site-origin.js';
+import {isMainSite,MAIN_ORIGIN,mainSiteURL} from './site-origin.js';
 import {setLanguage,t,preferredLanguage} from './i18n.js';
 setLanguage(preferredLanguage());
 const word=key=>t('audit_'+key);
 const main=document.querySelector('#main');
 if(!isMainSite()){
- const a=document.createElement('a');a.href=MAIN_ORIGIN;a.textContent=word('back');main.append(a);
+ window.location.replace(mainSiteURL());
 }else{
  document.title=word('title')+' — AtlasNote';
  const brand=document.createElement('p');brand.className='eyebrow';brand.textContent='AtlasNote';
