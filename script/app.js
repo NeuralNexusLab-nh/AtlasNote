@@ -1,6 +1,6 @@
 import * as S from './store.js';
 import * as C from './crypto.js';
-import {t,setLanguage,getLanguage,preferredLanguage,date,localized as L} from './i18n.js';
+import {t,setLanguage,getLanguage,preferredLanguage,date,compactDate,localized as L} from './i18n.js';
 import {docsContent,docKeys,docTitle,policy} from './docs.js';
 import {startMeteors} from './meteors.js';
 import {requestInstall,refreshInstallButtons} from './install.js';
@@ -179,7 +179,7 @@ async function historyDialog(state){
   for(const h of state.payload.history){title=S.apply(title,h.title);text=S.apply(text,h.text);versions.push({title,text,at:h.at});}
   if(!versions.length){await alertMessage(t('historyEmpty'),t('history'));return;}
   let save;
-  await dialog({title:t('history'),className:'workflow-dialog history-dialog',body:`<p class="workflow-hint">${t('historyHint')}</p><div class="workflow-field"><label class="field-label" for="history-select">${t('history')}</label><select class="field" id="history-select">${versions.map((v,i)=>`<option value="${i}">${date(v.at)}</option>`).join('')}</select></div><div id="history-preview"></div>`,confirm:'restoreVersion',cancel:true,onOpen:el=>{const preview=()=>{const v=versions[Number($('#history-select',el).value)];$('#history-preview',el).replaceChildren(notePreview({...v,images:state.payload.images},prose));};bind($('#history-select',el),'change',preview);preview();},onSubmit:async el=>{
+  await dialog({title:t('history'),className:'workflow-dialog history-dialog',body:`<p class="workflow-hint">${t('historyHint')}</p><div class="workflow-field"><label class="field-label" for="history-select">${t('chooseVersion')}</label><div class="history-select">${icon('clock-rotate-left')}<select class="field" id="history-select">${versions.map((v,i)=>`<option value="${i}">${i+1} · ${compactDate(v.at)}</option>`).join('')}</select>${icon('chevron-down')}</div></div><div id="history-preview"></div>`,confirm:'restoreVersion',cancel:true,onOpen:el=>{const preview=()=>{const v=versions[Number($('#history-select',el).value)];$('#history-preview',el).replaceChildren(notePreview({...v,images:state.payload.images},prose));};bind($('#history-select',el),'change',preview);preview();},onSubmit:async el=>{
     const select=$('#history-select',el),version=versions[Number(select.value)];
     save??=CloudUI.reviewedSave(state.note,{...state.payload,title:version.title,text:version.text},state.key,state.payload);select.disabled=true;
     try{await save();await notePage();return true;}

@@ -122,6 +122,15 @@ body:not([data-page=home]) .starfield{opacity:.28}
 .workflow-field{display:grid;gap:9px;min-width:0;margin-bottom:22px}
 .workflow-field>.field-label{margin:0;font-size:.9rem;line-height:1.6}
 .workflow-field>.input,.workflow-field>.field{width:100%;min-width:0;max-width:100%}
+.history-select{position:relative;min-width:0}
+.history-select>i{position:absolute;top:50%;transform:translateY(-50%);pointer-events:none;font-size:14px;color:var(--primary)}
+.history-select>i:first-child{left:16px}.history-select>i:last-child{right:16px;font-size:11px;color:var(--muted)}
+.history-select>select.field{appearance:none;-webkit-appearance:none;display:block;width:100%;min-width:0;min-height:48px;padding:12px 42px 12px 44px;border-radius:10px;background:var(--card-soft);border:1px solid var(--line);font-size:.87rem;font-weight:500;line-height:1.6;cursor:pointer;text-overflow:ellipsis}
+.history-select>select.field:hover{border-color:color-mix(in srgb,var(--primary) 55%,var(--line))}
+.history-select>select.field:focus-visible{outline:2px solid var(--primary);outline-offset:3px;border-color:var(--primary);box-shadow:0 0 0 4px color-mix(in srgb,var(--primary) 9%,transparent)}
+.history-select>select.field:disabled{cursor:wait;opacity:.55}.history-select:has(>select:disabled)>i{opacity:.55}
+.history-select option{background:var(--card);color:var(--text);font-weight:400}
+@media(forced-colors:active){.history-select>select.field{appearance:auto;padding-inline:13px}.history-select>i{display:none}}
 .workflow-field .agent-prompt{min-height:150px;max-height:36dvh;line-height:1.8;resize:vertical}
 .workflow-dialog .workflow-hint{font-size:.8rem;line-height:1.75;margin:0 0 20px;color:var(--muted)}
 .workflow-dialog .workflow-hint:last-child{margin:18px 0 0}
