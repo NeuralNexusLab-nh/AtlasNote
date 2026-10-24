@@ -5,9 +5,11 @@ import * as Unlock from './unlock-cache.js';
 import {responseSchema} from './agent-images.js';
 import {assertMainSite} from './site-origin.js';
 import {requests,isRateLimited} from './cloud-requests.js';
-let sdkPromise,user=null,ready=false,session=0,syncTask=null,timer=null;
+let sdkPromise,user=null,ready=false,session=0,syncTask=null,pushTask=null,timer=null;
 let state='signedOut';
 let identityFlight=null,identityFlightSession=-1,identityCache=null,identityAt=0,identityToken=null,lastSyncAt=0;
+let lastRefreshAt=0,usageCache=null,usageFlight=null,usageVersion=0,accountWork=Promise.resolve();
+const clearUsage=()=>{usageCache=null;usageVersion++;};
 const ROOT='atlasnote-v1';
 const ID=/^[a-f0-9-]{36}$/;
 const HASH=/^[a-f0-9]{64}$/;
@@ -41,18 +43,18 @@ export function sdk(){
 }
 async function identity(force=false){
   if(!navigator.onLine)throw new Error('cloudOffline');const p=await sdk();if(!p.auth.isSignedIn())throw new Error('cloudAuth');
-  if(!force&&identityCache&&identityToken===p.authToken&&Date.now()-identityAt<5000)return identityCache;
+  if(!force&&identityCache&&identityToken===p.authToken&&Date.now()-identityAt<30000)return identityCache;
   if(identityFlight&&identityFlightSession===session)return deadline(identityFlight);
   const ticket=session,token=p.authToken;
   const flight=remote(()=>p.auth.getUser(),'auth').then(u=>{if(ticket!==session||token!==p.authToken||!u||typeof u.uuid!=='string'||!/^[a-zA-Z0-9-]{1,100}$/.test(u.uuid)||u.is_temp)throw new Error('cloudAuth');identityCache=u;identityAt=Date.now();identityToken=token;return u;}).finally(()=>{if(identityFlight===flight)identityFlight=null;});
   identityFlight=flight;identityFlightSession=ticket;return deadline(flight);
 }
 export async function authorize(force=false){assertMainSite();if(!ready||!user)throw new Error('cloudAuth');try{const u=await identity(force);if(u.uuid!==user.uuid)throw new Error('cloudAuth');return u;}catch(e){if(errorKey(e)==='cloudAuth'||errorKey(e)==='cloudOffline')suspend(errorKey(e));throw e;}}
-function suspend(reason){identityCache=null;identityAt=0;if(reason==='cloudAuth')Unlock.forgetAll();ready=false;C.useAccountKey(null);notify(reason==='cloudAuth'?'signedOut':'offline');window.dispatchEvent(new CustomEvent('atlas-access-lost'));}
+function suspend(reason){identityCache=null;identityAt=0;clearUsage();if(reason==='cloudAuth')Unlock.forgetAll();ready=false;C.useAccountKey(null);notify(reason==='cloudAuth'?'signedOut':'offline');window.dispatchEvent(new CustomEvent('atlas-access-lost'));}
 export async function signIn(){assertMainSite();const p=await sdk();++session;ready=false;clearTimeout(timer);await p.auth.signIn({attempt_temp_user_creation:false,request_auth:true});return connect();}
 export async function connect(){
   assertMainSite();
-  const ticket=++session;ready=false;clearTimeout(timer);if(syncTask)await syncTask.catch(()=>{});C.useAccountKey(null);notify('connecting');
+  const ticket=++session;ready=false;clearTimeout(timer);clearUsage();lastRefreshAt=0;if(syncTask)await syncTask.catch(()=>{});if(pushTask)await pushTask.catch(()=>{});C.useAccountKey(null);notify('connecting');
   try{
     const next=await identity(true);if(ticket!==session)throw new Error('cloudAuth');
     const p=await sdk();let config;
@@ -69,7 +71,10 @@ export async function connect(){
   }catch(e){if(ticket!==session)throw e;ready=false;C.useAccountKey(null);notify(errorKey(e)==='cloudAuth'?'signedOut':errorKey(e));throw e;}
 }
 export async function boot(){try{const p=await sdk();if(!p.auth.isSignedIn()){notify('signedOut');return null;}return await connect();}catch{return null;}}
-export async function signOut(){await authorize();if((await S.rawAll('outbox')).length){await sync();if((await S.rawAll('outbox')).length)throw new Error('cloudPending');}++session;clearTimeout(timer);const p=await sdk();await p.auth.signOut();identityCache=null;identityAt=0;verifiedBlobs.clear();user=null;ready=false;Unlock.forgetAll();S.detachAccount();notify('signedOut');}
+export async function signOut(){await authorize();if(S.hasPending())await flushPending();++session;clearTimeout(timer);const p=await sdk();await p.auth.signOut();identityCache=null;identityAt=0;clearUsage();verifiedBlobs.clear();user=null;ready=false;Unlock.forgetAll();S.detachAccount();notify('signedOut');}
+// A frozen full document must not retain an authenticated view across logout elsewhere.
+// No provider logout, remote mutation or removal of the tab unlock cache is performed.
+export function discardFrozenPage(){++session;clearTimeout(timer);identityCache=null;identityAt=0;clearUsage();verifiedBlobs.clear();user=null;ready=false;S.detachAccount();}
 const path=relative=>`${ROOT}/${relative}`;
 export async function readJSON(filePath,max=100_000_000){const p=await sdk(),file=await remote(()=>p.fs.read(filePath));if(!file||file.size>max)throw new Error('cloudInvalid');let value;try{value=JSON.parse(await file.text());}catch{throw new Error('cloudInvalid');}return value;}
 async function hash(value){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',utf8.encode(value)))].map(v=>v.toString(16).padStart(2,'0')).join('');}
@@ -87,9 +92,8 @@ async function mapLimit(items,limit,task){
   await Promise.all(Array.from({length:Math.min(limit,items.length)},async()=>{while(!failure){const index=next++;if(index>=items.length)return;try{output[index]=await task(items[index],index);}catch(error){failure??=error;}}}));
   if(failure)throw failure;return output;
 }
-export async function sync(){
-  if(syncTask)return syncTask;const ticket=session,owner=user?.uuid;let completed=false;
-  syncTask=(async()=>{await authorize();notify('syncing');const run=async()=>{
+async function pushPending(ticket,owner){
+    if(ticket!==session||owner!==user?.uuid||!ready)throw new Error('cloudAuth');
     for(const change of await S.rawAll('outbox')){
       if(ticket!==session||!ready)throw new Error('cloudAuth');
       const commit={format:'AtlasNoteChange',version:1,id:change.id,noteId:change.noteId,parents:change.parents,deleted:change.deleted,at:change.at,snapshot:change.deleted?null:await pack(change.record)};
@@ -97,8 +101,31 @@ export async function sync(){
       try{await remote(()=>p.fs.write(filePath,JSON.stringify(commit),{overwrite:false,createMissingParents:true}),'write');}
       catch(e){let existing;try{existing=await readJSON(filePath,6000);}catch{throw e;}if(JSON.stringify(existing)!==JSON.stringify(commit))throw new Error('cloudInvalid');}
       if(ticket!==session||owner!==user?.uuid)throw new Error('cloudAuth');
-      S.memoryDelete('outbox',change.id);S.memoryPut('changes',commit);
+      S.memoryDelete('outbox',change.id);S.memoryPut('changes',commit);clearUsage();
     }
+}
+function accountLock(owner,run){
+  const task=accountWork.catch(()=>{}).then(()=>navigator.locks?navigator.locks.request('atlas-cloud-sync-'+owner,run):run());
+  accountWork=task;return task;
+}
+export async function flushPending(){
+  if(pushTask)return pushTask;const ticket=session,owner=user?.uuid;
+  const task=(async()=>{
+    await authorize();if(ticket!==session||owner!==user?.uuid)throw new Error('cloudAuth');notify('syncing');
+    await accountLock(owner,()=>pushPending(ticket,owner));
+    if(ticket!==session||!ready||owner!==user?.uuid)throw new Error('cloudAuth');
+    notify((await S.rawAll('conflicts')).length?'conflict':S.hasPending()?'pending':'synced');
+  })().catch(error=>{if(ticket===session)notify(errorKey(error));throw error;}).finally(()=>{if(pushTask===task)pushTask=null;});
+  pushTask=task;return task;
+}
+export function refresh(){
+  if(!ready||document.hidden||syncTask||Date.now()-lastSyncAt<30000||Date.now()-lastRefreshAt<15000)return;
+  lastRefreshAt=Date.now();void sync().catch(()=>{});
+}
+export async function sync(){
+  if(syncTask)return syncTask;const ticket=session,owner=user?.uuid;let completed=false;
+  syncTask=(async()=>{await authorize();notify('syncing');const run=async()=>{
+    await pushPending(ticket,owner);
     const folders=(await list(path('notes'))).filter(folder=>ID.test(folder.name)&&(folder.is_dir||folder.isDir===true));
     const stagedChanges=new Map();
     // Read and validate the complete snapshot before publishing any remote changes.
@@ -128,8 +155,9 @@ export async function sync(){
       S.memoryPut('heads',{id:result.id,tips:result.tips});
       if(result.heads.length>1)S.memoryPut('conflicts',{id:result.id,heads:result.heads});else S.memoryDelete('conflicts',result.id);
     }
-    const conflicts=await S.rawAll('conflicts');completed=true;lastSyncAt=Date.now();notify(conflicts.length?'conflict':S.hasPending()?'pending':'synced');
-  };return navigator.locks?await navigator.locks.request('atlas-cloud-sync-'+owner,run):await run();})()
+    const conflicts=await S.rawAll('conflicts');completed=true;lastSyncAt=Date.now();clearUsage();notify(conflicts.length?'conflict':S.hasPending()?'pending':'synced');
+    const ids=staged.filter(Boolean).map(result=>result.id);if(ids.length)window.dispatchEvent(new CustomEvent('atlas-notes-updated',{detail:{ids}}));
+  };return await accountLock(owner,run);})()
     .catch(e=>{if(ticket===session)notify(errorKey(e));throw e;})
     .finally(()=>{syncTask=null;if(completed&&ready&&S.hasPending()){clearTimeout(timer);timer=setTimeout(()=>{if(ready)sync().catch(()=>{});},1000);}});
   return syncTask;
@@ -137,7 +165,7 @@ export async function sync(){
 async function flushChange(id){
   const owner=user?.uuid;
   for(let attempt=0;attempt<3;attempt++){
-    try{await sync();}catch(error){if(ready&&user?.uuid===owner&&!await S.rawGet('outbox',id))return;throw error;}
+    try{await flushPending();}catch(error){if(ready&&user?.uuid===owner&&!await S.rawGet('outbox',id))return;throw error;}
     if(!await S.rawGet('outbox',id))return;
   }
   throw new Error('cloudPending');
@@ -146,13 +174,23 @@ async function removeNote(id,expected){await authorize();const n=await S.rawGet(
 export const conflicts=()=>S.rawAll('conflicts');
 export async function conflictPreview(head){await authorize();return head.deleted?null:unpack(head.snapshot);}
 export async function resolveConflict(id,chosen){await authorize();const conflict=await S.rawGet('conflicts',id);if(!conflict||!conflict.heads.some(h=>h.id===chosen))throw new Error('conflict');const head=conflict.heads.find(h=>h.id===chosen),record=await conflictPreview(head),n=await S.rawGet('notes',id),change={id:crypto.randomUUID(),noteId:id,parents:conflict.heads.map(h=>h.id),record,deleted:head.deleted,at:new Date().toISOString()};if(record)S.memoryPut('notes',{...record,rev:(n?.rev||0)+1});else S.memoryDelete('notes',id);S.memoryPut('outbox',change);S.memoryPut('heads',{id,tips:[change.id]});S.memoryDelete('conflicts',id);await flushChange(change.id);}
-export async function usage(){await authorize();const p=await sdk(),[space,monthly]=await Promise.allSettled([remote(()=>p.fs.space(),'space'),remote(()=>p.auth.getMonthlyUsage(),'usage')]);return {space:space.status==='fulfilled'?space.value:null,monthly:monthly.status==='fulfilled'?monthly.value:null};}
+export async function usage(){
+  await authorize();const ticket=session,owner=user.uuid,version=usageVersion;
+  if(usageCache?.session===ticket&&Date.now()-usageCache.at<20000)return structuredClone(usageCache.value);
+  if(usageFlight?.session===ticket)return usageFlight.task;
+  const task=(async()=>{const p=await sdk(),[space,monthly]=await Promise.allSettled([remote(()=>p.fs.space(),'space'),remote(()=>p.auth.getMonthlyUsage(),'usage')]);
+    if(ticket!==session||owner!==user?.uuid||!ready)throw new Error('cloudAuth');
+    const value={space:space.status==='fulfilled'?space.value:null,monthly:monthly.status==='fulfilled'?monthly.value:null};
+    if(version===usageVersion&&space.status==='fulfilled'&&monthly.status==='fulfilled')usageCache={session:ticket,at:Date.now(),value};return structuredClone(value);
+  })().finally(()=>{if(usageFlight?.task===task)usageFlight=null;});
+  usageFlight={session:ticket,task};return task;
+}
 export async function savePreferences(prefs){await authorize();const p=await sdk();await remote(()=>p.kv.set('atlasnote.preferences.v1',{theme:prefs.theme==='light'?'light':'dark',language:['en','zh-Hant','ja','leet'].includes(prefs.language)?prefs.language:null,history:[0,1,3,5,10,20].includes(prefs.history)?prefs.history:3,trashDays:[1,3,7,14,30].includes(prefs.trashDays)?prefs.trashDays:7}),'write');S.savePreferences(prefs);}
 export async function preferences(){await authorize();const p=await sdk();let value=await remote(()=>p.kv.get('atlasnote.preferences.v1'),'kv');if(!value)value=await remote(()=>p.kv.get('atlasnote.retention.v1'),'kv');return value&&typeof value==='object'?S.savePreferences({...S.preferences(),...value}):S.preferences();}
 export async function saveRetention(prefs){return savePreferences(prefs);}
 export async function retention(){return preferences();}
 export async function agent(messages,onChunk,signal){await authorize();signal.throwIfAborted();const p=await sdk(),models=await p.ai.listModels();signal.throwIfAborted();const candidate=models.find(m=>m.id==='openai/gpt-6-luna')||models.find(m=>m.id==='gpt-6-luna');if(!candidate)throw new Error('agentUnavailable');const result=await p.ai.chat(messages,{model:candidate.id,stream:true,max_tokens:12000,outputFormat:{type:'json_schema',schema:responseSchema,name:'atlas_note_edit',strict:true},signal});let text='';for await(const chunk of result){if(signal.aborted)throw new DOMException('Aborted','AbortError');if(chunk.type==='error')throw new Error('agentFailed');if(chunk.text){text+=chunk.text;onChunk(text.length);if(text.length>200000)throw new Error('agentInvalid');}}return text;}
 window.addEventListener('offline',()=>{if(user)suspend('cloudOffline');});
-window.addEventListener('focus',()=>{if(ready)authorize().then(()=>{if(Date.now()-lastSyncAt>15000)return sync();}).catch(()=>{});});
+window.addEventListener('focus',()=>{if(ready)authorize().then(refresh).catch(()=>{});});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&ready)authorize().catch(()=>{});});
-setInterval(()=>{if(ready&&!document.hidden)authorize(true).catch(()=>{});},30000);
+setInterval(()=>{if(ready&&!document.hidden)authorize(true).then(refresh).catch(()=>{});},30000);

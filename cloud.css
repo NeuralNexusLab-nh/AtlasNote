@@ -108,6 +108,9 @@ body:not([data-page=home]) .starfield{opacity:.28}
 .cloud-check{max-width:760px;padding-block:clamp(24px,6vw,64px)}.cloud-check>h1{font-size:clamp(1.6rem,5vw,2.5rem);text-wrap:balance}.cloud-check>p{line-height:1.7}.cloud-check>button{margin-top:16px}.cloud-check-result dl{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 24px;margin:0}.cloud-check-result dd{margin:0;text-align:right}.cloud-check-result p{display:grid;gap:6px;padding-top:16px;border-top:1px solid var(--line);font-size:.85rem}.cloud-check-result code{overflow-wrap:anywhere}.cloud-check-result span{line-height:1.6}
 
 /* One dialog rhythm for Agent input, progress, review and previous versions. */
+.resource-loading{min-height:206px}.resource-skeleton{height:54px;margin:18px 0;background:linear-gradient(100deg,var(--button) 25%,var(--card-soft) 45%,var(--button) 65%);background-size:200% 100%;border-radius:8px;animation:resource-pulse 1.6s ease-in-out infinite}
+@keyframes resource-pulse{to{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.resource-skeleton{animation:none}}
 .workflow-dialog{width:min(700px,calc(100% - 32px));max-height:calc(100dvh - 40px);overflow:hidden}
 .workflow-dialog[open]{display:flex;flex-direction:column}
 .workflow-dialog>.dialog-body{min-height:0;overflow:auto;overscroll-behavior:contain;padding:28px;scrollbar-width:thin}

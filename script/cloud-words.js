@@ -1,5 +1,6 @@
 // Added to the existing dictionary; l33t continues to use its existing transform.
 export const cloudWords={
+ resourceLoading:['Updating usage…','正在更新用量…','使用量を更新中…'],remoteChanged:['This note changed on another device. Keep your draft before reopening it; your current edits have not been replaced.','此筆記已在其他裝置更新。目前修改並未被覆蓋，請先保留草稿，再重新開啟筆記。','別の端末でこのノートが更新されました。現在の編集内容は置き換えていません。草稿を保管してから開き直してください。'],
  previewEmpty:['No text content','尚無文字內容','本文はありません'],processing:['Processing…','處理中…','処理中…'],
  agentPreparing:['Preparing your preview','正在產生預覽','プレビューを準備中'],agentReceiving:['Writing your changes…','正在整理修改內容…','変更内容を作成中…'],agentResult:['Review changes','確認修改','変更を確認'],
  cloudUpload:['Cloud upload did not finish. Keep this page open and retry to avoid losing unsaved changes.','雲端上傳未完成。請保留目前頁面並重試，避免遺失尚未儲存的修改。','クラウドへのアップロードを完了できませんでした。未保存の変更を失わないよう、このページを開いたまま再試行してください。'],

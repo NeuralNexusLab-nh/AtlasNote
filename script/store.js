@@ -2,9 +2,10 @@ import * as C from './crypto.js';
 const tables=Object.fromEntries(['notes','outbox','heads','conflicts','changes'].map(name=>[name,new Map()]));
 let backend=null,accountId=null, prefs={theme:'dark',language:null,history:3,trashDays:7};
 function clearMemory(){for(const table of Object.values(tables))table.clear();}
-export function reset(){clearMemory();backend=null;accountId=null;}
-export function configureAccount(id,adapter){if(!/^[a-zA-Z0-9-]{1,100}$/.test(id))throw new Error('cloudAuth');if(accountId!==id)clearMemory();accountId=id;backend=adapter;}
-export function detachAccount(){clearMemory();backend=null;accountId=null;C.useAccountKey(null);}
+function resetPreferences(){prefs={theme:prefs.theme,language:prefs.language,history:3,trashDays:7};}
+export function reset(){clearMemory();backend=null;accountId=null;resetPreferences();}
+export function configureAccount(id,adapter){if(!/^[a-zA-Z0-9-]{1,100}$/.test(id))throw new Error('cloudAuth');if(accountId!==id){clearMemory();resetPreferences();}accountId=id;backend=adapter;}
+export function detachAccount(){clearMemory();backend=null;accountId=null;resetPreferences();C.useAccountKey(null);}
 export const hasPending=id=>id?[...tables.outbox.values()].some(change=>change.noteId===id):tables.outbox.size>0;
 export const memoryPut=(name,value)=>{if(!tables[name]||!value||typeof value.id!=='string')throw new Error('invalidData');tables[name].set(value.id,structuredClone(value));};
 export const memoryDelete=(name,id)=>tables[name]?.delete(id);

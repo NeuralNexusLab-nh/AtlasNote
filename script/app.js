@@ -12,6 +12,7 @@ import {homeDetails} from './home-content.js';
 import {clearLegacy} from './legacy-storage.js';
 import {isMainSite} from './site-origin.js';
 import {notePreview} from './note-preview.js';
+import {createRouter} from './router.js';
 
 const $=(s,root=document)=>root.querySelector(s),$$=(s,root=document)=>[...root.querySelectorAll(s)];
 export const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -21,6 +22,9 @@ const iconButton=(label,ico,attrs='',cls='')=>`<button type="button" class="icon
 const linkButton=(label,ico,url,cls='')=>`<a href="${url}" class="button ${cls}" aria-label="${escape(t(label))}">${icon(ico)}<span class="compact-label">${t(label)}</span></a>`;
 const main=$('#main');
 let prefs=S.preferences(),currentPage='',renderId=0,allNotes=[],selection=new Set(),query='',filter='all',filterOpen=false,editorDirty=false,previewing=false,opened=null,editor=null,pausedDraft=null,cloudBoot=Promise.resolve(null);
+let router=null,renderQueue=Promise.resolve(),rendering=false,viewRefresh=null;
+const privatePages=['dashboard','notes','trash','note','edit','settings'];
+const navigate=(url,options)=>router?router.navigate(url,options):Promise.resolve(false);
 setLanguage(prefs.language||preferredLanguage());
 const md=window.markdownit({html:false,linkify:true,typographer:false});
 // Never load Markdown-supplied remote images. Only validated local attachments render.
@@ -32,6 +36,8 @@ const showLive=message=>{$('#live').textContent=message;};
 function route(){const p=location.pathname.split('/').filter(Boolean).pop()?.replace(/\.html$/,'')||'index';return p==='index'?'home':['dashboard','notes','trash','settings','docs','privacy','terms','note','edit','new'].includes(p)?(p==='new'?'edit':p):'404';}
 function newId(){return new URLSearchParams(location.search).get('id');}
 function noteURL(id){return `/note.html?id=${encodeURIComponent(id)}`;}
+const routeAddress=()=>location.pathname+location.search;
+function viewGuard(){const token=renderId,url=routeAddress();return ()=>token===renderId&&url===routeAddress();}
 
 function dialog({title,body='',confirm='gotIt',cancel=false,danger=false,form=false,wide=false,className='',onSubmit=null,onOpen=null}){
   return new Promise(resolve=>{
@@ -72,10 +78,11 @@ async function copyText(text){
 }
 
 function chrome(){
+  $('#navbar').classList.remove('open');
   const nav=(Cloud.signedIn()?[['home','house','/'],['dashboard','table-columns','/dashboard.html'],['notes','book-open','/notes.html'],['trash','trash-can','/trash.html'],['docs','book','/docs.html'],['settings','sliders','/settings.html']]:[['home','house','/'],['docs','book','/docs.html']]);
   $('#navbar').innerHTML=`<a class="brand" href="/" aria-label="AtlasNote"><img src="/asset/logo.svg" alt="" width="31" height="31"><span>AtlasNote</span></a><nav class="nav-links" aria-label="${t('home')}">${nav.map(([key,ico,url])=>`<a class="nav-link ${currentPage===key||key==='notes'&&['note','edit'].includes(currentPage)?'active':''}" href="${url}" ${currentPage===key?'aria-current="page"':''}>${icon(ico)}<span>${t(key)}</span></a>`).join('')}</nav><div class="nav-actions"><select class="language-select" aria-label="${t('language')}" id="language"><option value="en">English</option><option value="zh-Hant">繁體中文</option><option value="ja">日本語</option><option value="leet">l33t</option></select>${Cloud.signedIn()?button('logout','right-from-bracket','data-nav-signout','nav-auth'):linkButton('login','right-to-bracket','/dashboard.html','primary nav-auth')}${iconButton('filter','bars','data-menu aria-expanded="false"','mobile-toggle')}</div>`;
   $('#language').value=getLanguage();
-  const syncBadge=document.createElement('button');syncBadge.type='button';syncBadge.className='sync-badge';syncBadge.dataset.cloudStatus='';syncBadge.hidden=!Cloud.signedIn();$('.nav-actions').prepend(syncBadge);updateCloudStatus();bind(syncBadge,'click',async()=>{if(!Cloud.profile()){location.href='/dashboard.html';return;}if(Cloud.status()==='conflict')return CloudUI.conflictManager();await Cloud.sync();if(['dashboard','notes','trash','note'].includes(currentPage)&&!editorDirty)await render();else updateCloudStatus();});
+  const syncBadge=document.createElement('button');syncBadge.type='button';syncBadge.className='sync-badge';syncBadge.dataset.cloudStatus='';syncBadge.hidden=!Cloud.signedIn();$('.nav-actions').prepend(syncBadge);updateCloudStatus();bind(syncBadge,'click',async()=>{if(!Cloud.profile()){await navigate('/dashboard.html');return;}if(Cloud.status()==='conflict')return CloudUI.conflictManager();await Cloud.sync();if(['dashboard','notes','trash','note'].includes(currentPage)&&!editorDirty)await render();else updateCloudStatus();});
   bind($('#language'),'change',async e=>{if(editorDirty&&!await dialog({title:t('discard'),body:`<p>${t('discardWarning')}</p>`,confirm:'discard',cancel:true})){e.target.value=getLanguage();return;}editorDirty=false;prefs={...prefs,language:e.target.value};if(Cloud.signedIn())await Cloud.savePreferences(prefs);else S.savePreferences(prefs);setLanguage(prefs.language);await render();});
 
   bind($('[data-nav-signout]'),'click',signOut);
@@ -83,7 +90,7 @@ function chrome(){
   $('#footer').innerHTML=`<div class="footer-links"><a href="/terms.html">${t('terms')}</a><a href="/privacy.html">${t('privacy')}</a><a href="mailto:atlasnote@nxlabtw.com">${icon('envelope')}${t('contact')}</a></div><p class="footer-tagline">${t('tagline')}</p><p>AtlasNote · © ${new Date().getFullYear()} <a href="https://nxlabtw.com" rel="noopener noreferrer">NXLabTW</a></p>`;
   document.documentElement.dataset.theme=prefs.theme;$('.skip').textContent=L(['Skip to content','跳至主要內容','本文へ移動']);
 }
-async function signOut(){if(!await dialog({title:t('logout'),body:editorDirty?`<p>${t('discardWarning')}</p>`:'',confirm:'logout',cancel:true}))return;await Cloud.signOut();editorDirty=false;location.href='/';}
+async function signOut(){if(!await dialog({title:t('logout'),body:editorDirty?`<p>${t('discardWarning')}</p>`:'',confirm:'logout',cancel:true}))return;await Cloud.signOut();editorDirty=false;pausedDraft?.key?.fill(0);pausedDraft=null;allNotes=[];selection.clear();query='';filter='all';filterOpen=false;await navigate('/');}
 function updateHomeActions(){const signed=Cloud.signedIn();for(const a of $$('[data-home-primary]')){a.href='/dashboard.html';a.innerHTML=icon(signed?'table-columns':'right-to-bracket')+`<span>${t(signed?'openDashboard':'homeStart')}</span>`;a.setAttribute('aria-label',t(signed?'openDashboard':'homeStart'));}}
 function prose(text,images=[]){
   const container=document.createElement('div');container.className='prose';
@@ -112,8 +119,8 @@ async function home(){
   main.insertAdjacentHTML('beforeend',homeDetails(Cloud.signedIn()));updateHomeActions();
 }
 
-async function listPage(isTrash=false){
-  allNotes=await S.all();const titles=await Promise.all(allNotes.map(n=>C.readTitle(n)));allNotes=allNotes.map((n,i)=>({...n,displayTitle:titles[i]||t('untitled')}));
+async function listPage(isTrash=false,isCurrent=viewGuard()){
+  const records=await S.all(),titles=await Promise.all(records.map(n=>C.readTitle(n)));if(!isCurrent())return;allNotes=records.map((n,i)=>({...n,displayTitle:titles[i]||t('untitled')}));
   main.innerHTML=`<header class="page-head"><div><p class="eyebrow">${icon('note-sticky')}${t('localBadge')}</p><h1>${t(isTrash?'trash':'notes')}</h1><p>${isTrash?t('trashRetention'):t('notSynced')}</p></div><div class="actions">${isTrash?'':linkButton('newNote','plus','/edit.html','primary')}</div></header><div class="workspace-grid notes-workspace"><section class="workspace-main"><div class="toolbar"><label class="search-box">${icon('magnifying-glass')}<input class="input" id="search" type="search" aria-label="${t('search')}" placeholder="${t('search')}" maxlength="200" value="${escape(query)}"></label>${isTrash?'':`<button class="button" type="button" data-filter aria-expanded="${filterOpen}">${icon('sliders')}<span class="compact-label">${t('filter')}</span></button>`}</div><div id="filters"></div><div id="selection"></div><div class="note-list" id="note-list"></div></section></div>`;
   const drawList=()=>{
     const notes=allNotes.filter(n=>Boolean(n.trashedAt)===isTrash&&(!query||n.displayTitle.toLocaleLowerCase().includes(query.toLocaleLowerCase()))&&(isTrash||filter==='all'&&!n.archived||filter==='pinned'&&n.pinned||filter==='archived'&&n.archived)).sort((a,b)=>Number(b.pinned)-Number(a.pinned)||Date.parse(b.updatedAt)-Date.parse(a.updatedAt));
@@ -136,7 +143,7 @@ async function actNotes(ids,action){
     if(action==='delete'){await S.remove(id,n.rev);await Unlock.forget(n);}
     else await S.updateMeta(id,action==='pin'?{pinned:!n.pinned}:action==='archive'?{archived:!n.archived}:action==='restore'?{trashedAt:null}:{trashedAt:new Date().toISOString(),trashDays:prefs.trashDays});
   }
-  selection.clear();if(currentPage==='note'){location.href='/trash.html';return;}await listPage(currentPage==='trash');
+  selection.clear();if(currentPage==='note'){await navigate('/trash.html');return;}await listPage(currentPage==='trash');
 }
 async function askPIN(key='importPIN'){
   const result=await dialog({title:t(key),body:`<label class="field-label" for="vault-input">${t('pinLabel')}</label><input class="input" id="vault-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore maxlength="16"><p class="hint">${t('pinRules')}</p>`,confirm:'unlock',cancel:true,form:true,onSubmit:el=>{const pin=$('input',el).value;if(!C.validatePIN(pin))throw new Error('pinRules');return pin;}});
@@ -151,17 +158,17 @@ async function unlockNote(note){
   return ok?unlocked:null;
 }
 function clearKeys(){opened?.key?.fill(0);editor?.key?.fill(0);opened=null;editor?.imageSources?.clear();editor=null;}
-async function notePage(){
+async function notePage(isCurrent=viewGuard()){
   const n=await S.get(newId());if(!n)throw new Error('notFound');
-  const title=await C.readTitle(n)||t('untitled');
+  const title=await C.readTitle(n)||t('untitled');if(!isCurrent())return;
   main.innerHTML=`<section class="note-page"><header class="note-header"><p class="eyebrow">${icon('note-sticky')}${t(n.trashedAt?'trash':'notes')}</p><div class="note-title-row"><h1>${escape(title)}</h1><span class="pill accent">${icon(n.mode==='none'?'file-lines':'lock')}${t(n.mode)}</span></div><div class="note-meta"><span>${t('edited')} ${date(n.updatedAt)}</span><span>${size(n.size)}</span><span id="word-count"></span></div></header><div class="actions note-actions">${button('copy','copy','data-copy','icon-mobile')}${!n.trashedAt?linkButton('edit','pen','/edit.html?id='+n.id,'primary'):''}${!n.trashedAt?button('agent','wand-magic-sparkles','data-agent','primary icon-mobile'):''}${!n.trashedAt?button('history','clock-rotate-left','data-history','icon-mobile'):''}${n.mode==='secure'?button('lock','lock','data-lock','icon-mobile'):''}${n.trashedAt?button('restore','rotate-left','data-restore','primary')+button('deleteForever','trash-can','data-permanent-delete','danger'):button('delete','trash-can','data-trash','danger icon-mobile')}</div>${n.trashedAt?`<p class="trash-note-banner">${icon('trash-can')}${t('trashReadOnly')}</p>`:''}<article class="note-paper" id="note-content"></article></section>`;
   const content=$('#note-content');
   const lockButton=$('[data-lock]');if(lockButton)lockButton.hidden=true;
-  const draw=payload=>{content.innerHTML='';content.append(prose(payload.text,payload.images));$('#word-count').textContent=`${Array.from(payload.text).length} ${t('characters')}`;if(lockButton)lockButton.hidden=false;};
+  const draw=payload=>{if(!isCurrent()||!content.isConnected)return;content.innerHTML='';content.append(prose(payload.text,payload.images));$('#word-count').textContent=`${Array.from(payload.text).length} ${t('characters')}`;if(lockButton)lockButton.hidden=false;};
   if(n.mode==='secure'){
-    opened={note:n,key:null,payload:null};const cached=await Unlock.cached(n);if(cached){try{opened={note:n,key:cached,payload:await S.decodeRecord(n,cached)};draw(opened.payload);}catch{cached.fill(0);await Unlock.forget(n);}}if(!opened.payload)content.innerHTML=`<div class="locked-card"><div class="lock-icon">${icon('lock')}</div><h2>${t('locked')}</h2><p>${t('sessionOnly')}</p>${button('unlock','unlock-keyhole','data-unlock','primary')}</div>`;
+    opened={note:n,key:null,payload:null};const cached=await Unlock.cached(n);if(!isCurrent()){cached?.fill(0);return;}if(cached){try{const payload=await S.decodeRecord(n,cached);if(!isCurrent()){cached.fill(0);return;}opened={note:n,key:cached,payload};draw(opened.payload);}catch{cached.fill(0);await Unlock.forget(n);}}if(!isCurrent())return;if(!opened.payload)content.innerHTML=`<div class="locked-card"><div class="lock-icon">${icon('lock')}</div><h2>${t('locked')}</h2><p>${t('sessionOnly')}</p>${button('unlock','unlock-keyhole','data-unlock','primary')}</div>`;
     bind($('[data-unlock]'),'click',async()=>{const result=await unlockNote(n);if(result){opened={note:n,...result};draw(result.payload);}});
-  }else{opened={note:n,key:null,payload:await S.decodeRecord(n)};draw(opened.payload);}
+  }else{const payload=await S.decodeRecord(n);if(!isCurrent())return;opened={note:n,key:null,payload};draw(opened.payload);}
   bind($('[data-copy]'),'click',async e=>{const b=e.currentTarget;b.disabled=true;try{if(!opened.payload){const result=await unlockNote(n);if(!result)return;opened={note:n,...result};draw(result.payload);}await copyText(opened.payload.text);if(!b.isConnected)return;b.innerHTML=icon('check')+`<span class="compact-label">${t('copied')}</span>`;setTimeout(()=>{if(b.isConnected)b.innerHTML=icon('copy')+`<span class="compact-label">${t('copy')}</span>`;},1800);}finally{if(b.isConnected)b.disabled=false;}});
   bind($('[data-history]'),'click',async()=>{if(!opened.payload){const result=await unlockNote(n);if(!result)return;opened={note:n,...result};draw(result.payload);}await historyDialog(opened);});
   bind($('[data-lock]'),'click',async()=>{await Unlock.forget(n);clearKeys();await notePage();});bind($('[data-trash]'),'click',()=>actNotes([n.id],'trash'));bind($('[data-permanent-delete]'),'click',()=>actNotes([n.id],'delete'));bind($('[data-restore]'),'click',async()=>{await S.updateMeta(n.id,{trashedAt:null});await notePage();});
@@ -180,10 +187,11 @@ async function historyDialog(state){
   }});
 }
 
-async function editPage(){
+async function editPage(isCurrent=()=>true){
   const id=newId();const note=id?await S.get(id):{id:S.uuid(),mode:'basic',rev:0,pinned:false,archived:false,trashedAt:null};
-  if(!note)throw new Error('notFound');if(note.trashedAt){location.replace(noteURL(note.id));return;}let key=null,payload={title:'',text:'',images:[],history:[]};
-  if(id){if(pausedDraft?.note.id===id&&pausedDraft.owner===Cloud.profile()?.uuid){key=pausedDraft.key?new Uint8Array(pausedDraft.key):null;payload=structuredClone(pausedDraft.payload);}else if(note.mode==='secure'){const result=await unlockNote(note);if(!result){location.href=noteURL(id);return;}({key,payload}=result);}else payload=await S.decodeRecord(note);}
+  if(!isCurrent())return;if(!note)throw new Error('notFound');if(note.trashedAt){void navigate(noteURL(note.id),{replace:true});return;}let key=null,payload={title:'',text:'',images:[],history:[]};
+  if(id){if(pausedDraft?.note.id===id&&pausedDraft.owner===Cloud.profile()?.uuid){key=pausedDraft.key?new Uint8Array(pausedDraft.key):null;payload=structuredClone(pausedDraft.payload);}else if(note.mode==='secure'){const result=await unlockNote(note);if(!result){void navigate(noteURL(id),{replace:true});return;}({key,payload}=result);}else payload=await S.decodeRecord(note);}
+  if(!isCurrent()){key?.fill(0);return;}
   if(!id&&pausedDraft&&pausedDraft.owner===Cloud.profile()?.uuid){Object.assign(note,pausedDraft.note);payload=structuredClone(pausedDraft.payload);}
   editor={note,payload:structuredClone(payload),previous:id?structuredClone(payload):null,key,compression:'balanced',imageSources:new Map(),imageBusy:false};previewing=false;editorDirty=false;
   main.innerHTML=`<form id="editor-form" novalidate><header class="page-head"><div><p class="eyebrow">${icon('note-sticky')}${t('localBadge')}</p><h1>${t(id?'edit':'newNote')}</h1></div><div class="actions">${button('discard','xmark','data-discard','ghost') }<button class="button primary" type="submit" id="save-note">${icon('check')}<span class="compact-label">${t('save')}</span></button></div></header><div class="editor-layout"><div class="editor-main"><section class="card"><label class="field-label" for="note-title">${t('title')}</label><input class="input title-input" id="note-title" placeholder="${t('titlePlaceholder')}" maxlength="80" required value="${escape(payload.title)}"><p class="hint">${t('titleRule')}</p></section><section class="card"><div class="editor-tabs">${button('content','pen','data-tab="write"','small')}${button('preview','eye','data-tab="preview"','small ghost')}<span class="count-label" id="editor-count"></span></div><label class="sr-only" for="note-text">${t('content')}</label><textarea class="editor-text" id="note-text" placeholder="${t('contentPlaceholder')}" maxlength="1000000" spellcheck="false">${escape(payload.text)}</textarea><div class="editor-preview" id="editor-preview" hidden></div></section><section class="card"><div class="image-header"><h2>${icon('image')} ${t('images')} <small class="muted" id="image-count">${payload.images.length}/3</small></h2><div class="compression-control"><span class="compression-label">${t('compression')}</span><div class="compression-switch" role="group" aria-label="${t('compression')}">${['compact','balanced','clear'].map(k=>`<button type="button" data-compression="${k}" class="${k==='balanced'?'active':''}">${t(k)}</button>`).join('')}</div></div></div><div class="image-upload" id="dropzone">${button('addImage','plus','data-add-images')}<p class="hint">${t('imageHint')}</p><input type="file" id="image-files" accept="image/png,image/jpeg,image/webp" multiple hidden></div><div class="image-grid" id="image-grid"></div></section></div><aside class="editor-side"><section class="card"><h2>${icon('shield-halved')} ${t('encryption')}</h2><div class="encryption-choices">${['none','basic','secure'].map(mode=>`<label class="mode-choice"><input type="radio" name="mode" value="${mode}" ${note.mode===mode?'checked':''} ${id?'disabled':''}><span><strong>${t(mode)}</strong><small>${t(mode+'Desc')}</small></span></label>`).join('')}</div><div class="pin-grid" id="new-pin" ${note.mode==='secure'&&!id?'':'hidden'}><label class="field-group"><span class="field-label">${t('pinLabel')}</span><input class="input" id="new-pin-value" type="password" autocomplete="off" data-lpignore="true" data-1p-ignore autocapitalize="off" spellcheck="false" minlength="4" maxlength="16"></label><label class="field-group"><span class="field-label">${t('confirmPIN')}</span><input class="input" id="new-pin-confirm" type="password" autocomplete="off" data-lpignore="true" data-1p-ignore autocapitalize="off" spellcheck="false" maxlength="16"></label><p class="hint">${t('pinRules')}</p></div>${id?`<p class="hint">${t('newModeHint')}</p>`:''}</section><section class="card size-card"><p class="eyebrow">${t('estimated')}</p><div class="storage-number" data-size></div><p class="hint">${t('storageAbout')}</p></section><p class="hint">${t('notSynced')}</p></aside></div></form>`;
@@ -201,15 +209,16 @@ async function editPage(){
   $$('[name=mode]').forEach(r=>bind(r,'change',()=>{editor.note.mode=r.value;$('#new-pin').hidden=r.value!=='secure';update();}));
   $$('[data-tab]').forEach(b=>bind(b,'click',()=>{previewing=b.dataset.tab==='preview';$('#note-text').hidden=previewing;$('#editor-preview').hidden=!previewing;update();}));
   $$('[data-compression]').forEach(b=>{b.title=t(b.dataset.compression+'Hint');b.setAttribute('aria-label',t(b.dataset.compression)+': '+b.title);b.setAttribute('aria-pressed',String(b.classList.contains('active')));bind(b,'click',()=>changeCompression(b.dataset.compression));});
-  bind($('[data-discard]'),'click',async()=>{if(!editorDirty||await dialog({title:t('discard'),body:`<p>${t('discardWarning')}</p>`,confirm:'discard',cancel:true})){editorDirty=false;location.href=id?noteURL(id):'/notes.html';}});
+  bind($('[data-discard]'),'click',async()=>{if(!editorDirty||await dialog({title:t('discard'),body:`<p>${t('discardWarning')}</p>`,confirm:'discard',cancel:true})){editorDirty=false;await navigate(id?noteURL(id):'/notes.html');}});
   bind($('#editor-form'),'submit',async e=>{
-    e.preventDefault();if($('#save-note').disabled)return;const btn=$('#save-note'),form=$('#editor-form');form.inert=true;form.setAttribute('aria-busy','true');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';
+    e.preventDefault();if($('#save-note').disabled)return;const target=editor,btn=$('#save-note'),form=$('#editor-form');form.inert=true;form.setAttribute('aria-busy','true');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';
     try{
-      if(!editor.payload.title.trim())throw new Error('limitError');
-      if(!id&&editor.note.mode==='secure'){const vault=await C.createVault(editor.note.id,$('#new-pin-value').value);editor.key=vault.key;editor.note.salt=vault.salt;editor.note.wrap=vault.wrap;}
-      editor.note=await S.saveNote(editor.note,editor.payload,editor.key,editor.previous);if(editor.key)await Unlock.remember(editor.note,editor.key);editorDirty=false;location.href=noteURL(editor.note.id);
-    }catch(error){const pending=await S.rawGet('notes',editor.note.id);if(pending&&S.hasPending(editor.note.id)){editor.note=pending;editor.previous=structuredClone(editor.payload);}throw error;}
-    finally{form.inert=false;form.removeAttribute('aria-busy');btn.innerHTML=icon('check')+`<span class="compact-label">${t('save')}</span>`;btn.disabled=false;}
+      if(!target.payload.title.trim())throw new Error('limitError');
+      if(!id&&target.note.mode==='secure'){const vault=await C.createVault(target.note.id,$('#new-pin-value').value);target.key?.fill(0);target.key=vault.key;target.note.salt=vault.salt;target.note.wrap=vault.wrap;}
+      target.note=await S.saveNote(target.note,target.payload,target.key,target.previous);if(target.key)await Unlock.remember(target.note,target.key);
+      if(editor===target&&Cloud.signedIn()){editorDirty=false;form.removeAttribute('aria-busy');await navigate(noteURL(target.note.id));}
+    }catch(error){const pending=await S.rawGet('notes',target.note.id);if(pending&&S.hasPending(target.note.id)){target.note=pending;try{target.previous=await S.decodeRecord(pending,target.key);}catch{target.previous=structuredClone(target.payload);}}throw error;}
+    finally{if(editor!==target)target.key?.fill(0);form.inert=false;form.removeAttribute('aria-busy');btn.innerHTML=icon('check')+`<span class="compact-label">${t('save')}</span>`;btn.disabled=false;}
   });
   bind($('[data-add-images]'),'click',()=>$('#image-files').click());bind($('#image-files'),'change',async e=>{await addImages([...e.target.files]);e.target.value='';update();});
   bind($('#dropzone'),'dragover',e=>{e.preventDefault();$('#dropzone').classList.add('dragging');});bind($('#dropzone'),'dragleave',()=>$('#dropzone').classList.remove('dragging'));
@@ -293,29 +302,60 @@ function docsPage(kind='docs'){
 }
 async function install(){return requestInstall();}
 window.addEventListener('beforeunload',e=>{if(editorDirty||S.hasPending()){e.preventDefault();e.returnValue='';}});
-document.addEventListener('click',async e=>{
-  const a=e.target.closest('a[href]');if(!a||(!editorDirty&&!S.hasPending())||a.getAttribute('href').startsWith('#'))return;e.preventDefault();
-  if(S.hasPending()){try{await Cloud.sync();if(S.hasPending())throw new Error('cloudPending');}catch(error){await fail(error);return;}}
-  if(!editorDirty||await dialog({title:t('discard'),body:`<p>${t('discardWarning')}</p>`,confirm:'discard',cancel:true})){editorDirty=false;location.href=a.href;}
+window.addEventListener('pagehide',event=>{
+  if(!event.persisted)return;
+  ++renderId;clearTimeout(viewRefresh);clearKeys();pausedDraft?.key?.fill(0);pausedDraft=null;allNotes=[];selection.clear();
+  document.querySelectorAll('dialog').forEach(d=>{d.dispatchEvent(new Event('atlas-dismiss'));if(d.isConnected){d.close();d.remove();}});
+  Cloud.discardFrozenPage();main.replaceChildren();
 });
-async function render(){
-  const token=++renderId;document.body.dataset.page=route();if(!$('#global-stars')){const stars=document.createElement('canvas');stars.id='global-stars';stars.className='starfield';stars.setAttribute('aria-hidden','true');document.body.prepend(stars);startMeteors(stars);}clearKeys();currentPage=route();chrome();document.title=currentPage==='home'?`AtlasNote — ${t('tagline')}`:`${t(currentPage==='edit'?'newNote':currentPage)} — AtlasNote`;
+window.addEventListener('pageshow',event=>{if(event.persisted)location.reload();});
+async function canLeave(){
+  if(document.querySelector('dialog[open]')||$('#editor-form')?.getAttribute('aria-busy')==='true')return false;
+  if(S.hasPending()){try{await Cloud.flushPending();if(S.hasPending())throw new Error('cloudPending');}catch(error){await fail(error);return false;}}
+  if(editorDirty&&!await dialog({title:t('discard'),body:`<p>${t('discardWarning')}</p>`,confirm:'discard',cancel:true}))return false;
+  editorDirty=false;pausedDraft?.key?.fill(0);pausedDraft=null;return true;
+}
+function render(){
+  clearTimeout(viewRefresh);const token=++renderId,url=routeAddress();
+  const task=renderQueue.catch(()=>{}).then(()=>renderView(token,url));renderQueue=task;return task;
+}
+async function renderView(token,url){
+  const isCurrent=()=>token===renderId&&url===routeAddress();
+  if(!isCurrent())return;rendering=true;main.inert=true;main.setAttribute('aria-busy','true');
+  document.body.dataset.page=route();if(!$('#global-stars')){const stars=document.createElement('canvas');stars.id='global-stars';stars.className='starfield';stars.setAttribute('aria-hidden','true');document.body.prepend(stars);startMeteors(stars);}clearKeys();currentPage=route();chrome();document.title=currentPage==='home'?`AtlasNote — ${t('tagline')}`:`${t(currentPage==='edit'?'newNote':currentPage)} — AtlasNote`;
   try{
-    if(['dashboard','notes','trash','note','edit','settings'].includes(currentPage)){await cloudBoot;try{await Cloud.authorize();}catch{CloudUI.loginGate();return;}await S.cleanup();}
+    if(privatePages.includes(currentPage)){await cloudBoot;if(!isCurrent())return;try{await Cloud.authorize();}catch{if(isCurrent())CloudUI.loginGate();return;}if(!isCurrent())return;await S.cleanup();if(!isCurrent())return;}
     if(currentPage==='home')await home();
-    else if(currentPage==='dashboard')await CloudUI.dashboard();
-    else if(['notes','trash'].includes(currentPage))await listPage(currentPage==='trash');
-    else if(currentPage==='note')await notePage();else if(currentPage==='edit')await editPage();else if(currentPage==='settings')await settingsPage();else if(['docs','privacy','terms'].includes(currentPage))docsPage(currentPage);
+    else if(currentPage==='dashboard')await CloudUI.dashboard(isCurrent);
+    else if(['notes','trash'].includes(currentPage))await listPage(currentPage==='trash',isCurrent);
+    else if(currentPage==='note')await notePage(isCurrent);else if(currentPage==='edit')await editPage(isCurrent);else if(currentPage==='settings')await settingsPage();else if(['docs','privacy','terms'].includes(currentPage))docsPage(currentPage);
     else main.innerHTML=`<div class="empty"><h1>404</h1>${linkButton('home','arrow-left','/')}</div>`;
+    if(!isCurrent())return;
     $$('[data-progress]').forEach(el=>el.style.setProperty('--progress',`${el.dataset.progress}%`));
     refreshInstallButtons();
-  }catch(error){if(token!==renderId)return;main.innerHTML=`<div class="empty">${icon('triangle-exclamation')}<h1>${t('error')}</h1><p>${t(['notFound','missingKey','storageError','storageFull','storageDisabled'].includes(error.message)?error.message:'unexpectedError')}</p>${linkButton('notes','arrow-left','/notes.html')}</div>`;console.error('[AtlasNote]',error.message);}
+    if(privatePages.includes(currentPage))Cloud.refresh();
+  }catch(error){if(!isCurrent())return;main.innerHTML=`<div class="empty">${icon('triangle-exclamation')}<h1>${t('error')}</h1><p>${t(['notFound','missingKey','storageError','storageFull','storageDisabled'].includes(error.message)?error.message:'unexpectedError')}</p>${linkButton('notes','arrow-left','/notes.html')}</div>`;console.error('[AtlasNote]',error.message);}
+  finally{rendering=false;main.inert=false;main.removeAttribute('aria-busy');}
 }
 CloudUI.configureUI({icon,button,linkButton,escape,size,bind,dialog,alertMessage,prose,render,askPIN,signOut});
 function updateCloudStatus(){const badge=$('[data-cloud-status]');if(!badge)return;const state=Cloud.status(),key=['synced','syncing','pending','connecting','signedOut','offline'].includes(state)?state:state==='conflict'?'resolve':'syncPaused';badge.innerHTML=icon(state==='synced'?'cloud':state==='conflict'?'triangle-exclamation':state==='signedOut'?'right-to-bracket':'rotate')+`<span>${escape(t(key))}</span>`;badge.setAttribute('aria-label',t(key));badge.title=t(state.startsWith('cloud')?state:key);badge.dataset.state=state;}
 window.addEventListener('atlas-cloud',()=>{if($('.nav-link').length!==(Cloud.signedIn()?6:2))chrome();else updateCloudStatus();updateHomeActions();});
 window.addEventListener('atlas-preferences',event=>{const previousLanguage=getLanguage();prefs={...prefs,...event.detail};setLanguage(prefs.language||preferredLanguage());document.documentElement.dataset.theme=prefs.theme;if(currentPage){chrome();document.title=currentPage==='home'?`AtlasNote — ${t('tagline')}`:`${t(currentPage==='edit'?'newNote':currentPage)} — AtlasNote`;if(previousLanguage!==getLanguage()&&['home','docs','privacy','terms'].includes(currentPage))void render();}});
-window.addEventListener('atlas-access-lost',()=>{if(['dashboard','notes','trash','note','edit','settings'].includes(currentPage)){if(editor&&editorDirty){pausedDraft={owner:Cloud.profile()?.uuid,note:structuredClone(editor.note),payload:structuredClone(editor.payload),key:editor.key?new Uint8Array(editor.key):null};}clearKeys();document.querySelectorAll('dialog').forEach(d=>{d.dispatchEvent(new Event('atlas-dismiss'));if(d.isConnected){d.close();d.remove();}});CloudUI.loginGate();}});
+window.addEventListener('atlas-notes-updated',event=>{
+  if(!Cloud.signedIn()||!privatePages.includes(currentPage))return;
+  if(currentPage==='edit'){
+    if(editor&&event.detail.ids.includes(editor.note.id)&&!$('[data-remote-change]')){const notice=document.createElement('p');notice.className='notice';notice.dataset.remoteChange='';notice.setAttribute('role','status');notice.textContent=t('remoteChanged');$('#editor-form .page-head')?.after(notice);}return;
+  }
+  if(!['dashboard','notes','trash','note'].includes(currentPage)||editorDirty||rendering||router?.busy||document.querySelector('dialog[open]'))return;
+  viewRefresh=setTimeout(()=>void render(),0);
+});
+window.addEventListener('atlas-access-lost',()=>{
+  ++renderId;clearTimeout(viewRefresh);
+  if(editor&&editorDirty){pausedDraft={owner:Cloud.profile()?.uuid,note:structuredClone(editor.note),payload:structuredClone(editor.payload),key:editor.key?new Uint8Array(editor.key):null};}
+  clearKeys();allNotes=[];selection.clear();query='';filter='all';filterOpen=false;
+  document.querySelectorAll('dialog').forEach(d=>{d.dispatchEvent(new Event('atlas-dismiss'));if(d.isConnected){d.close();d.remove();}});
+  if(privatePages.includes(currentPage)){CloudUI.loginGate();main.inert=false;main.removeAttribute('aria-busy');}
+});
 if(!isMainSite()){
   document.title='AtlasNote';
   $('#navbar').innerHTML='<a class="brand" href="https://atlasnote.nxlabtw.com/"><img src="/asset/logo.svg" alt="" width="31" height="31"><span>AtlasNote</span></a>';
@@ -323,6 +363,7 @@ if(!isMainSite()){
   $('#footer').innerHTML='<p>AtlasNote · NXLabTW</p>';
   document.documentElement.dataset.theme='dark';
 }else{
+router=createRouter({render,canLeave,onError:error=>void fail(error)});
 // Retire pre-Puter notes and their key, even when signed out. Never touch cloud caches.
 const cleanupBoot=clearLegacy({onBlocked:()=>alertMessage(t('legacyBusy'))}).then(()=>S.reset());
 cloudBoot=cleanupBoot.then(()=>Cloud.boot());
