@@ -11,6 +11,7 @@ import * as Unlock from './unlock-cache.js';
 import {homeDetails} from './home-content.js';
 import {clearLegacy} from './legacy-storage.js';
 import {isMainSite} from './site-origin.js';
+import {notePreview} from './note-preview.js';
 
 const $=(s,root=document)=>root.querySelector(s),$$=(s,root=document)=>[...root.querySelectorAll(s)];
 export const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -32,21 +33,28 @@ function route(){const p=location.pathname.split('/').filter(Boolean).pop()?.rep
 function newId(){return new URLSearchParams(location.search).get('id');}
 function noteURL(id){return `/note.html?id=${encodeURIComponent(id)}`;}
 
-function dialog({title,body='',confirm='gotIt',cancel=false,danger=false,form=false,wide=false,onSubmit=null,onOpen=null}){
+function dialog({title,body='',confirm='gotIt',cancel=false,danger=false,form=false,wide=false,className='',onSubmit=null,onOpen=null}){
   return new Promise(resolve=>{
-    const el=document.createElement('dialog');if(wide)el.className='draw-dialog';
+    const el=document.createElement('dialog');el.className=[wide?'draw-dialog':'',className].filter(Boolean).join(' ');
     el.setAttribute('aria-labelledby','dialog-title');
     el.innerHTML=`<div class="dialog-body"><h2 id="dialog-title">${escape(title)}</h2>${body}</div><div class="dialog-actions">${cancel?button('cancel','xmark','data-cancel','ghost'):''}${button(confirm,danger?'trash-can':form?'unlock-keyhole':'check','data-confirm',danger?'danger':'primary')}</div>`;
-    $('#dialog-root').append(el);let settled=false;
+    $('#dialog-root').append(el);let settled=false,submitting=false;
     const finish=value=>{if(settled)return;settled=true;el.close();el.remove();resolve(value);};
-    $('[data-cancel]',el)?.addEventListener('click',()=>finish(null));
+    $('[data-cancel]',el)?.addEventListener('click',()=>{if(!submitting)finish(null);});
     el.addEventListener('atlas-dismiss',()=>finish(null),{once:true});
-    el.addEventListener('cancel',e=>{e.preventDefault();if(cancel)finish(null);else if(!onSubmit)finish(true);});
+    el.addEventListener('cancel',e=>{e.preventDefault();if(submitting)return;if(cancel)finish(null);else if(!onSubmit)finish(true);});
     // Backdrop clicks intentionally do not dismiss dialogs.
     $('[data-confirm]',el).addEventListener('click',async()=>{
-      const btn=$('[data-confirm]',el);if(onSubmit){btn.disabled=true;try{const value=await onSubmit(el);if(value!==false)finish(value??true);}catch(e){let err=$('.dialog-error',el);if(!err){err=document.createElement('p');err.className='dialog-error';err.setAttribute('role','alert');$('.dialog-body',el).append(err);}const errorKey=e.name==='OperationError'?'unlockError':e.message,translated=t(errorKey);err.textContent=translated&&translated!==errorKey?translated:t(Cloud.errorKey(e));}finally{btn.disabled=false;}}else finish(true);
+      if(submitting)return;const btn=$('[data-confirm]',el),cancelButton=$('[data-cancel]',el),original=btn.innerHTML;
+      if(onSubmit){
+        submitting=true;btn.disabled=true;if(cancelButton)cancelButton.disabled=true;el.setAttribute('aria-busy','true');
+        btn.innerHTML=`<span class="spinner" aria-hidden="true"></span><span>${t('processing')}</span>`;
+        try{const value=await onSubmit(el);if(value!==false)finish(value??true);}
+        catch(e){let err=$('.dialog-error',el);if(!err){err=document.createElement('p');err.className='dialog-error';err.setAttribute('role','alert');$('.dialog-body',el).append(err);}const errorKey=e.name==='OperationError'?'unlockError':e.message,translated=t(errorKey);err.textContent=translated&&translated!==errorKey?translated:t(Cloud.errorKey(e));err.scrollIntoView({block:'nearest'});}
+        finally{submitting=false;btn.disabled=false;btn.innerHTML=original;if(cancelButton)cancelButton.disabled=false;el.removeAttribute('aria-busy');}
+      }else finish(true);
     });
-    el.showModal();onOpen?.(el);setTimeout(()=>$('.input',el)?.focus(),50);
+    el.showModal();onOpen?.(el);setTimeout(()=>{if(el.isConnected)$('.input',el)?.focus({preventScroll:true});},50);
     if(form)el.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('input')){e.preventDefault();$('[data-confirm]',el).click();}});
   });
 }
@@ -163,7 +171,13 @@ async function historyDialog(state){
   const versions=[];let title=state.payload.title,text=state.payload.text;
   for(const h of state.payload.history){title=S.apply(title,h.title);text=S.apply(text,h.text);versions.push({title,text,at:h.at});}
   if(!versions.length){await alertMessage(t('historyEmpty'),t('history'));return;}
-  await dialog({title:t('history'),body:`<p>${t('historyHint')}</p><label class="field-label" for="history-select">${t('history')}</label><select class="field" id="history-select">${versions.map((v,i)=>`<option value="${i}">${date(v.at)}</option>`).join('')}</select><div class="card history-card" id="history-preview"></div>`,confirm:'restoreVersion',cancel:true,onOpen:el=>{const preview=()=>{const v=versions[Number($('#history-select',el).value)],box=$('#history-preview',el);box.replaceChildren();const title=document.createElement('strong'),text=document.createElement('div');title.textContent=v.title;text.className='history-sample';text.textContent=v.text;box.append(title,text);};bind($('#history-select',el),'change',preview);preview();},onSubmit:async el=>{const version=versions[Number($('#history-select',el).value)];await S.saveNote(state.note,{...state.payload,title:version.title,text:version.text},state.key,state.payload);await notePage();return true;}});
+  let save;
+  await dialog({title:t('history'),className:'workflow-dialog history-dialog',body:`<p class="workflow-hint">${t('historyHint')}</p><div class="workflow-field"><label class="field-label" for="history-select">${t('history')}</label><select class="field" id="history-select">${versions.map((v,i)=>`<option value="${i}">${date(v.at)}</option>`).join('')}</select></div><div id="history-preview"></div>`,confirm:'restoreVersion',cancel:true,onOpen:el=>{const preview=()=>{const v=versions[Number($('#history-select',el).value)];$('#history-preview',el).replaceChildren(notePreview({...v,images:state.payload.images},prose));};bind($('#history-select',el),'change',preview);preview();},onSubmit:async el=>{
+    const select=$('#history-select',el),version=versions[Number(select.value)];
+    save??=CloudUI.reviewedSave(state.note,{...state.payload,title:version.title,text:version.text},state.key,state.payload);select.disabled=true;
+    try{await save();await notePage();return true;}
+    catch(error){if(!S.hasPending(state.note.id)){save=null;select.disabled=false;}throw error;}
+  }});
 }
 
 async function editPage(){

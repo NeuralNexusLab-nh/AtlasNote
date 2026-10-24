@@ -106,3 +106,59 @@ body:not([data-page=home]) .starfield{opacity:.28}
 .home-final .actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));max-width:390px;margin-inline:auto;align-items:stretch}.home-final .actions .button{min-width:0;min-height:44px;font-size:12px;padding:10px 12px;gap:7px}
 .main-site-gate{max-width:620px;margin:clamp(32px,8vw,96px) auto;padding:clamp(24px,5vw,48px);text-align:center}.main-site-gate .eyebrow{justify-content:center}.main-site-gate h1{font-size:clamp(1.5rem,4vw,2rem);line-height:1.3;text-wrap:balance}.main-site-gate .button{margin-top:24px;min-width:160px}
 .cloud-check{max-width:760px;padding-block:clamp(24px,6vw,64px)}.cloud-check>h1{font-size:clamp(1.6rem,5vw,2.5rem);text-wrap:balance}.cloud-check>p{line-height:1.7}.cloud-check>button{margin-top:16px}.cloud-check-result dl{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 24px;margin:0}.cloud-check-result dd{margin:0;text-align:right}.cloud-check-result p{display:grid;gap:6px;padding-top:16px;border-top:1px solid var(--line);font-size:.85rem}.cloud-check-result code{overflow-wrap:anywhere}.cloud-check-result span{line-height:1.6}
+
+/* One dialog rhythm for Agent input, progress, review and previous versions. */
+.workflow-dialog{width:min(700px,calc(100% - 32px));max-height:calc(100dvh - 40px);overflow:hidden}
+.workflow-dialog[open]{display:flex;flex-direction:column}
+.workflow-dialog>.dialog-body{min-height:0;overflow:auto;overscroll-behavior:contain;padding:28px;scrollbar-width:thin}
+.workflow-dialog>.dialog-body>h2{font-size:1.4rem;line-height:1.4;margin:0 0 20px;padding:0;text-wrap:pretty}
+.workflow-dialog>.dialog-actions{flex:none;border-top:1px solid var(--line);padding:16px 28px;margin:0;background:var(--card);gap:12px}
+.workflow-dialog>.dialog-actions .button{min-width:140px;min-height:44px;line-height:1.5}
+.workflow-context{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.83rem!important;line-height:1.65!important;margin:0 0 22px}
+.workflow-context>i{color:var(--primary)}.workflow-context>span{min-width:0;overflow-wrap:anywhere}
+.workflow-field{display:grid;gap:9px;min-width:0;margin-bottom:22px}
+.workflow-field>.field-label{margin:0;font-size:.9rem;line-height:1.6}
+.workflow-field>.input,.workflow-field>.field{width:100%;min-width:0;max-width:100%}
+.workflow-field .agent-prompt{min-height:150px;max-height:36dvh;line-height:1.8;resize:vertical}
+.workflow-dialog .workflow-hint{font-size:.8rem;line-height:1.75;margin:0 0 20px;color:var(--muted)}
+.workflow-dialog .workflow-hint:last-child{margin:18px 0 0}
+.agent-consent{display:flex;align-items:flex-start;gap:11px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:var(--card-soft);font-size:.78rem!important;line-height:1.75!important;margin:0}
+.agent-consent>i{color:var(--primary);margin-top:4px}.agent-consent>span{min-width:0;text-wrap:pretty}
+.workflow-dialog .agent-image-picker{margin:0 0 22px;padding:14px;border-radius:10px}
+.workflow-dialog .agent-image-picker>div{grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:10px}
+.workflow-dialog .agent-image-picker label{grid-template-columns:20px minmax(0,1fr);gap:10px;padding:10px;min-height:44px;transition:border-color .18s,background .18s}
+.workflow-dialog .agent-image-picker img{height:90px;background:var(--canvas)}
+.workflow-dialog .agent-image-picker label span{grid-column:1/-1;line-height:1.6;font-size:.8rem}
+.workflow-dialog .agent-image-picker label:focus-within{outline:2px solid var(--primary);outline-offset:2px}
+.workflow-dialog .agent-image-picker .hint{font-size:.76rem;line-height:1.7;margin-top:12px}
+.agent-summary{display:flex;align-items:flex-start;gap:12px;padding:15px 17px;border:1px solid var(--line);border-radius:10px;background:var(--card-soft);margin-bottom:20px;min-width:0}
+.agent-summary>i{color:var(--primary);margin-top:4px}.agent-summary>p{font-size:.87rem;line-height:1.8;margin:0;white-space:pre-line;overflow-wrap:anywhere;min-width:0}
+.workflow-dialog .agent-preview{border:0;border-radius:0;padding:0;max-height:none;overflow:visible}
+.note-preview{display:grid;gap:16px;min-width:0}
+.note-preview>section{border:1px solid var(--line);border-radius:11px;overflow:hidden;min-width:0;background:var(--card)}
+.note-preview .note-preview-label{display:flex;align-items:center;gap:9px;font-family:var(--body);font-size:.76rem;line-height:1.6;font-weight:550;letter-spacing:0;color:var(--muted);background:var(--card-soft);border-bottom:1px solid var(--line);padding:10px 16px;margin:0;text-wrap:pretty}
+.note-preview-label>i{color:var(--primary)}
+.note-preview .note-preview-title{font-family:var(--display);font-size:1.18rem;font-weight:600;line-height:1.6;letter-spacing:-.02em;color:var(--text);padding:16px;margin:0;overflow-wrap:anywhere;text-wrap:pretty}
+.note-preview-content{min-width:0;padding:16px}.note-preview-content>.prose{padding:0;font-size:.9rem;min-height:0;overflow-wrap:anywhere}
+.note-preview-content>.prose>:first-child{margin-top:0}.note-preview-content>.prose>:last-child{margin-bottom:0}
+.note-preview-content>.prose h1{font-size:1.4rem}.note-preview-content>.prose h2{font-size:1.2rem}.note-preview-content>.prose h3{font-size:1.05rem}
+.note-preview-content>.prose pre{max-width:100%;overflow:auto;white-space:pre}.note-preview-content>.prose table{display:block;max-width:100%;overflow:auto}
+.note-preview-content>p{margin:0}.note-preview-content img{max-height:360px;object-fit:contain}
+.workflow-dialog .agent-loading{padding:16px;margin:0;border:1px solid var(--line);border-radius:10px;background:var(--card-soft);line-height:1.7;font-size:.9rem}
+.workflow-dialog .agent-loading>span:last-child{min-width:0}.workflow-dialog .agent-progress{margin:18px 0}
+.workflow-dialog .agent-wait{font-size:.82rem;margin:0;line-height:1.75}
+@media(max-width:600px){
+ .workflow-dialog{width:calc(100% - 24px);max-height:calc(100dvh - 24px);border-radius:14px}
+ .workflow-dialog>.dialog-body{padding:20px;scrollbar-gutter:auto}
+ .workflow-dialog>.dialog-body>h2{font-size:1.2rem;margin-bottom:17px}
+ .workflow-dialog>.dialog-actions{padding:14px 20px;gap:10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+ .workflow-dialog>.dialog-actions:has(>.button:only-child){grid-template-columns:1fr}
+ .workflow-dialog>.dialog-actions .button{min-width:0;width:100%;font-size:.8rem;padding:10px;gap:7px;align-self:stretch}
+ .workflow-dialog .agent-image-picker>div{grid-template-columns:1fr}
+ .workflow-dialog .agent-image-picker label{grid-template-columns:20px 64px minmax(0,1fr)}
+ .workflow-dialog .agent-image-picker label span{grid-column:auto}.workflow-dialog .agent-image-picker img{height:54px}
+ .workflow-field .agent-prompt{min-height:125px}.workflow-context{margin-bottom:18px}
+ .agent-summary{padding:13px;gap:10px}.agent-consent{padding:12px;gap:9px}
+ .note-preview .note-preview-title{font-size:1.06rem;padding:14px}.note-preview-content{padding:14px}.note-preview .note-preview-label{padding:9px 14px}
+}
+@media(max-height:450px){.workflow-dialog{max-height:calc(100dvh - 16px)}.workflow-dialog>.dialog-body{padding:18px 22px}.workflow-dialog>.dialog-actions{padding:10px 22px}.workflow-field .agent-prompt{min-height:100px}}
