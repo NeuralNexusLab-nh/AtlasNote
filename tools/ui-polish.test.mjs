@@ -10,7 +10,7 @@ try{
  for(const [used,remaining]of [[0,100],[25,75],[80,20],[100,0]]){
   mock.setUsage({used,capacity:100},{allowanceInfo:{remaining,monthUsageAllowance:100}});await p.goto(base+'/dashboard.html');await p.waitForSelector('.dashboard-metrics .meter');
   const meters=await p.locator('.meter').evaluateAll(es=>es.map(e=>({ratio:e.firstElementChild.getBoundingClientRect().width/e.getBoundingClientRect().width,value:Number(e.getAttribute('aria-valuenow'))})));
-  ok(meters.length===2&&meters.every(e=>Math.abs(e.ratio-remaining/100)<.015&&e.value===remaining),`Real rendered bars match ${remaining}% remaining`);
+  ok(meters.length===2&&Math.abs(meters[0].ratio-used/100)<.015&&meters[0].value===used&&Math.abs(meters[1].ratio-remaining/100)<.015&&meters[1].value===remaining,`Storage bar matches ${used}% used and allowance bar matches ${remaining}% remaining`);
  }
  mock.setUsage({used:44_600,capacity:104_857_600},{allowanceInfo:{remaining:830,monthUsageAllowance:1000}});
  await p.goto(base+'/notes.html');await p.waitForSelector('#note-list');ok(!await p.locator('.resource-stack').count(),'No capacity cards on My notes');
