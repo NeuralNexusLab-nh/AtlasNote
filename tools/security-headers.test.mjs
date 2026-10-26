@@ -14,7 +14,7 @@ const csp=policy['content-security-policy'];
 assert(csp.includes("default-src 'none'"));
 assert(!csp.includes("'unsafe-inline'")&&!csp.includes("'unsafe-eval'"));
 assert(csp.includes("'wasm-unsafe-eval'"),'PIN KDF needs WebAssembly, not arbitrary JS eval');
-assert(csp.includes("frame-ancestors 'none'")&&csp.includes("script-src-attr 'none'"));
+assert(csp.includes('frame-ancestors https://puter.com')&&csp.includes("script-src-attr 'none'"));
 assert(csp.includes('upgrade-insecure-requests'));
 assert(csp.includes('https://puter-seoul.s3.ap-northeast-2.amazonaws.com'),'Allow the observed Puter signed-storage host');
 assert(!csp.includes('https://*.amazonaws.com'),'Do not allow arbitrary AWS buckets');
@@ -34,7 +34,7 @@ for(const pathname of ['/','/notes','/script/app.js','/script/kdf-worker.js','/s
  }
  assert.equal(response.headers.get('access-control-allow-origin'),null);
 }
-const denied=await fetch(base+'/',{method:'POST'});assert.equal(denied.status,405);assert.equal(denied.headers.get('x-frame-options'),'DENY');
+const denied=await fetch(base+'/',{method:'POST'});assert.equal(denied.status,405);assert.equal(denied.headers.get('x-frame-options'),null,'CSP is the single source of truth for the explicit Puter embed exception');
 
 const require=createRequire(import.meta.url);
 const {chromium}=require('C:/Users/eaton/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
@@ -85,10 +85,15 @@ try{
   for(const directive of ['script-src-elem','script-src-attr','base-uri','connect-src'])assert(violations.includes(directive),directive+' blocked');
   assert.deepEqual(requests,[],'CSP blocks untrusted requests before network transmission');
 
+  await context.route('https://puter.com/**',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><title>Synthetic Puter embed</title><iframe src="https://${host}/"></iframe>`}));
+  const trusted=await context.newPage();
+  await trusted.goto('https://puter.com/');await trusted.waitForTimeout(500);
+  assert.equal(await trusted.locator('iframe').contentFrame().locator('#main').count().catch(()=>0),1,'Puter can embed AtlasNote');
+
   await context.route('https://attacker.example.test/**',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><title>Synthetic frame test</title><iframe src="https://${host}/"></iframe>`}));
   const attacker=await context.newPage(),errors=[];attacker.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
   await attacker.goto('https://attacker.example.test/');await attacker.waitForTimeout(500);
-  assert(errors.some(message=>/frame-ancestors|X-Frame-Options/.test(message)),'Cross-origin embedding blocked by browser');
+  assert(errors.some(message=>/frame-ancestors/.test(message)),'Non-Puter embedding blocked by browser');
   assert.equal(await attacker.locator('iframe').contentFrame().locator('.site-header').count().catch(()=>0),0);
   await context.close();
  }
