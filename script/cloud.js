@@ -22,6 +22,8 @@ function notify(value){state=value;window.dispatchEvent(new CustomEvent('atlas-c
 function missing(e){return e?.status===404||e?.error?.status===404||['ENOENT','not_found','subject_does_not_exist'].includes(e?.code)||['ENOENT','not_found','subject_does_not_exist'].includes(e?.error?.code);}
 export function errorKey(e){
   const code=e?.code||e?.error?.code||e?.error||e?.message;
+  if(['popup_blocked','popupBlocked'].includes(code))return 'cloudPopup';
+  if(['auth_window_closed','auth_canceled','auth_cancelled'].includes(code))return 'cloudAuthCanceled';
   if(isRateLimited(e))return 'cloudRate';
   if(e?.status===401||e?.error?.status===401||['invalid_token','authentication_required'].includes(code))return 'cloudAuth';
   if(e?.status===402||['insufficient_funds','subscription_required'].includes(code))return 'cloudCredit';
@@ -51,7 +53,20 @@ async function identity(force=false){
 }
 export async function authorize(force=false){assertMainSite();if(!ready||!user)throw new Error('cloudAuth');try{const u=await identity(force);if(u.uuid!==user.uuid)throw new Error('cloudAuth');return u;}catch(e){if(errorKey(e)==='cloudAuth'||errorKey(e)==='cloudOffline')suspend(errorKey(e));throw e;}}
 function suspend(reason){identityCache=null;identityAt=0;clearUsage();if(reason==='cloudAuth')Unlock.forgetAll();ready=false;C.useAccountKey(null);notify(reason==='cloudAuth'?'signedOut':'offline');window.dispatchEvent(new CustomEvent('atlas-access-lost'));}
-export async function signIn(){assertMainSite();const p=await sdk();++session;ready=false;clearTimeout(timer);await p.auth.signIn({attempt_temp_user_creation:false,request_auth:true});return connect();}
+function beginSignIn(p){
+  // iPadOS can reject a popup after an awaited SDK promise, despite the user
+  // having just tapped Login. Start the provider window in this same task.
+  ++session;ready=false;clearTimeout(timer);
+  let request;
+  try{request=p.auth.signIn({attempt_temp_user_creation:false,request_auth:true});}
+  catch(error){return Promise.reject(error);}
+  return Promise.resolve(request).then(()=>connect());
+}
+export function signIn(){
+  assertMainSite();
+  // The SDK normally loaded during boot. Do not await before its popup API.
+  return window.puter?beginSignIn(window.puter):sdk().then(beginSignIn);
+}
 export async function connect(){
   assertMainSite();
   const ticket=++session;ready=false;clearTimeout(timer);clearUsage();lastRefreshAt=0;if(syncTask)await syncTask.catch(()=>{});if(pushTask)await pushTask.catch(()=>{});C.useAccountKey(null);notify('connecting');

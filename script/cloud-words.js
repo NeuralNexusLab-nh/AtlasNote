@@ -43,3 +43,8 @@ cloudSpace:['Puter cloud storage','Puter 雲端空間','Puter クラウド容量
  guideIntro:['Your notes, across devices.','你的筆記，跨裝置接續。','ノートを、端末を超えて。'],guideOffline:['Connection & installation','連線與安裝','接続とインストール'],updatedPolicy:['Updated October 23, 2026','更新日期：2026 年 10 月 23 日','更新日：2026 年 10 月 23 日'],sessionOnly:['Enter your PIN to open this note.','輸入 PIN 開啟此筆記。','PIN を入力してノートを開きます。'],
  storageAbout:['Images, text, history and cloud sync data use your Puter storage.','圖片、文字、版本與雲端同步資料都會占用 Puter 空間。','画像、文章、履歴、同期データは Puter の容量を使用します。']
 };
+
+Object.assign(cloudWords,{
+ cloudAuthCanceled:['Puter sign-in was cancelled. Tap the button again when you are ready.','你已取消 Puter 登入；準備好後再點一次即可。','Puter へのログインはキャンセルされました。準備ができたら、もう一度ボタンを押してください。'],
+ cloudPopup:['Your browser blocked the Puter sign-in window. Allow popups for AtlasNote, then tap the button again.','瀏覽器封鎖了 Puter 登入視窗。請允許 AtlasNote 開啟彈出式視窗後，再點一次登入。','ブラウザが Puter のログイン画面をブロックしました。AtlasNote のポップアップを許可してから、もう一度ログインしてください。']
+});
