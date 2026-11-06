@@ -14,14 +14,14 @@ const csp=policy['content-security-policy'];
 assert(csp.includes("default-src 'none'"));
 assert(!csp.includes("'unsafe-inline'")&&!csp.includes("'unsafe-eval'"));
 assert(csp.includes("'wasm-unsafe-eval'"),'PIN KDF needs WebAssembly, not arbitrary JS eval');
-assert(csp.includes('frame-ancestors https://puter.com https://*.puter.com')&&csp.includes("script-src-attr 'none'"));
+assert(csp.includes('frame-ancestors https://puter.com https://*.puter.com https://browse.puter.site')&&csp.includes("script-src-attr 'none'"));
 assert(csp.includes('upgrade-insecure-requests'));
 assert(csp.includes('https://puter-seoul.s3.ap-northeast-2.amazonaws.com'),'Allow the observed Puter signed-storage host');
 assert(!csp.includes('https://*.amazonaws.com'),'Do not allow arbitrary AWS buckets');
 assert.equal(policy['cross-origin-opener-policy'],'same-origin-allow-popups','Keep OAuth popup opener communication');
-assert.equal(policy['cross-origin-resource-policy'],'same-origin');
+assert.equal(policy['cross-origin-resource-policy'],'cross-origin','Puter Browser loads the public static bundle through a secure wrapper');
 assert(!('cross-origin-embedder-policy' in policy),'Do not break the external SDK with an unverified COEP requirement');
-assert.equal(policy['access-control-allow-origin'],'https://puter.com','Only Puter may read static AtlasNote responses cross-origin');
+assert.equal(policy['access-control-allow-origin'],'*','Only public static AtlasNote assets are readable cross-origin; notes remain in private Puter storage');
 assert(!policy['strict-transport-security'].includes('includeSubDomains'),'Do not change security policy of unrelated subdomains');
 
 const base=process.env.ATLAS_TEST_ORIGIN||'http://127.0.0.1:4321';
@@ -32,7 +32,7 @@ for(const pathname of ['/','/notes','/script/app.js','/script/kdf-worker.js','/s
   const expected=key==='content-security-policy'?value.replace(/; upgrade-insecure-requests$/,''):key==='cache-control'&&['/sw.js','/site.webmanifest'].includes(pathname)?'no-cache':value;
   assert.equal(response.headers.get(key),expected,pathname+' '+key);
  }
- assert.equal(response.headers.get('access-control-allow-origin'),'https://puter.com');
+ assert.equal(response.headers.get('access-control-allow-origin'),'*');
 }
 const denied=await fetch(base+'/',{method:'POST'});assert.equal(denied.status,405);assert.equal(denied.headers.get('x-frame-options'),null);
 
@@ -95,6 +95,11 @@ try{
   assert.equal(await puter.locator('iframe').contentFrame().locator('#navbar').count(),1,'Puter may embed AtlasNote as an app');
   const cors=await puter.evaluate(async target=>{try{const response=await fetch(target+'/script/i18n.js');return {ok:response.ok,text:await response.text()};}catch(error){return {ok:false,error:String(error)};}},'https://'+host);
   assert(cors.ok&&cors.text.includes('export'),'Puter may make a constrained cross-origin read request');
+  await context.route('https://browse.puter.site/**',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><title>Synthetic Puter Browser</title><iframe src="https://${host}/"></iframe>`}));
+  const browserShell=await context.newPage();await browserShell.goto('https://browse.puter.site/');await browserShell.locator('iframe').contentFrame().locator('#navbar').waitFor();
+  assert.equal(await browserShell.locator('iframe').contentFrame().locator('#navbar').count(),1,'Puter Browser may load AtlasNote through its secure wrapper');
+  const browserCors=await browserShell.evaluate(async target=>{try{const response=await fetch(target+'/script/app.js');return {ok:response.ok,text:await response.text()};}catch(error){return {ok:false,error:String(error)};}},'https://'+host);
+  assert(browserCors.ok&&browserCors.text.includes('function chrome'),'Puter Browser may fetch the public AtlasNote bundle');
   await context.close();
  }
  console.log('Security headers: policy parity, canonical-host responses, real Argon/AES, blocked scripts/connections/base/frame — passed.');

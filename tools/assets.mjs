@@ -30,3 +30,19 @@ await (await installedIcon(512,.58)).toFile(output('../asset/icon-maskable.png')
 const favicon=await (await installedIcon(256,.72)).toBuffer(),header=Buffer.alloc(22);
 header.writeUInt16LE(1,2);header.writeUInt16LE(1,4);header.writeUInt16LE(1,10);header.writeUInt16LE(32,12);header.writeUInt32LE(favicon.length,14);header.writeUInt32LE(22,18);
 await fs.writeFile(output('../favicon.ico'),Buffer.concat([header,favicon]));
+
+const socialFrame=Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="soft" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#eef0ff"/><stop offset="1" stop-color="#f8f9ff"/></linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#soft)"/>
+  <circle cx="1020" cy="160" r="330" fill="#7181e5" opacity=".08"/>
+  <circle cx="860" cy="630" r="250" fill="#a199ec" opacity=".09"/>
+  <rect x="55" y="55" width="1090" height="520" rx="34" fill="none" stroke="#29367f" stroke-opacity=".16" stroke-width="2"/>
+  <text x="108" y="198" fill="#6c6fa0" font-family="Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="5">PERSONAL NOTES, YOUR PUTER STORAGE</text>
+  <text x="104" y="303" fill="#202546" font-family="Arial, sans-serif" font-size="82" font-weight="700">AtlasNote</text>
+  <text x="108" y="366" fill="#4e5374" font-family="Arial, sans-serif" font-size="31">Write it freely, keep it closely.</text>
+  <text x="108" y="466" fill="#4e5374" font-family="Arial, sans-serif" font-size="25">Notes · images · Markdown · private encryption</text>
+</svg>`);
+const socialMark=await sharp(mark).resize(330,330,{fit:'contain',background:transparent}).png().toBuffer();
+await sharp({create:{width:1200,height:630,channels:4,background:'#f8f9ff'}}).composite([{input:socialFrame},{input:socialMark,left:760,top:150}]).png().toFile(output('../asset/social-graph.png'));
