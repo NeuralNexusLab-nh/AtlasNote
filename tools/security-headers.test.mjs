@@ -14,14 +14,14 @@ const csp=policy['content-security-policy'];
 assert(csp.includes("default-src 'none'"));
 assert(!csp.includes("'unsafe-inline'")&&!csp.includes("'unsafe-eval'"));
 assert(csp.includes("'wasm-unsafe-eval'"),'PIN KDF needs WebAssembly, not arbitrary JS eval');
-assert(csp.includes("frame-ancestors 'none'")&&csp.includes("script-src-attr 'none'"));
+assert(csp.includes('frame-ancestors https://puter.com https://*.puter.com')&&csp.includes("script-src-attr 'none'"));
 assert(csp.includes('upgrade-insecure-requests'));
 assert(csp.includes('https://puter-seoul.s3.ap-northeast-2.amazonaws.com'),'Allow the observed Puter signed-storage host');
 assert(!csp.includes('https://*.amazonaws.com'),'Do not allow arbitrary AWS buckets');
 assert.equal(policy['cross-origin-opener-policy'],'same-origin-allow-popups','Keep OAuth popup opener communication');
 assert.equal(policy['cross-origin-resource-policy'],'same-origin');
 assert(!('cross-origin-embedder-policy' in policy),'Do not break the external SDK with an unverified COEP requirement');
-assert(!Object.keys(policy).some(key=>key.startsWith('access-control-allow-')),'Domain portability must not enable wildcard CORS');
+assert.equal(policy['access-control-allow-origin'],'https://puter.com','Only Puter may read static AtlasNote responses cross-origin');
 assert(!policy['strict-transport-security'].includes('includeSubDomains'),'Do not change security policy of unrelated subdomains');
 
 const base=process.env.ATLAS_TEST_ORIGIN||'http://127.0.0.1:4321';
@@ -32,9 +32,9 @@ for(const pathname of ['/','/notes','/script/app.js','/script/kdf-worker.js','/s
   const expected=key==='content-security-policy'?value.replace(/; upgrade-insecure-requests$/,''):key==='cache-control'&&['/sw.js','/site.webmanifest'].includes(pathname)?'no-cache':value;
   assert.equal(response.headers.get(key),expected,pathname+' '+key);
  }
- assert.equal(response.headers.get('access-control-allow-origin'),null);
+ assert.equal(response.headers.get('access-control-allow-origin'),'https://puter.com');
 }
-const denied=await fetch(base+'/',{method:'POST'});assert.equal(denied.status,405);assert.equal(denied.headers.get('x-frame-options'),'DENY');
+const denied=await fetch(base+'/',{method:'POST'});assert.equal(denied.status,405);assert.equal(denied.headers.get('x-frame-options'),null);
 
 const require=createRequire(import.meta.url);
 const {chromium}=require('C:/Users/eaton/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
@@ -89,7 +89,12 @@ try{
   const attacker=await context.newPage(),errors=[];attacker.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
   await attacker.goto('https://attacker.example.test/');await attacker.waitForTimeout(500);
   assert(errors.some(message=>/frame-ancestors|X-Frame-Options/.test(message)),'Cross-origin embedding blocked by browser');
-  assert.equal(await attacker.locator('iframe').contentFrame().locator('.site-header').count().catch(()=>0),0);
+  assert.equal(await attacker.locator('iframe').contentFrame().locator('#navbar').count().catch(()=>0),0);
+  await context.route('https://puter.com/**',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><title>Synthetic Puter app</title><iframe src="https://${host}/"></iframe>`}));
+  const puter=await context.newPage();await puter.goto('https://puter.com/app/atlasnote');await puter.locator('iframe').contentFrame().locator('#navbar').waitFor();
+  assert.equal(await puter.locator('iframe').contentFrame().locator('#navbar').count(),1,'Puter may embed AtlasNote as an app');
+  const cors=await puter.evaluate(async target=>{try{const response=await fetch(target+'/script/i18n.js');return {ok:response.ok,text:await response.text()};}catch(error){return {ok:false,error:String(error)};}},'https://'+host);
+  assert(cors.ok&&cors.text.includes('export'),'Puter may make a constrained cross-origin read request');
   await context.close();
  }
  console.log('Security headers: policy parity, canonical-host responses, real Argon/AES, blocked scripts/connections/base/frame — passed.');

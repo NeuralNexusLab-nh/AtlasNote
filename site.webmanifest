@@ -6,8 +6,8 @@
   "start_url": "https://atlasnote.nxlabtw.com/dashboard.html",
   "scope": "https://atlasnote.nxlabtw.com/",
   "display": "standalone",
-  "background_color": "#171721",
-  "theme_color": "#171721",
+  "background_color": "#f8f9ff",
+  "theme_color": "#29367f",
   "icons": [
     {"src":"/asset/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
     {"src":"/asset/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},
